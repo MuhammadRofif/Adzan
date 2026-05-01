@@ -18,17 +18,10 @@ import {
   AdzanEntry,
 } from "../../shared/types";
 import {
-  mockParticipants,
-  mockPoints,
-  mockTransactions,
-  mockRedeemHistory,
-  mockQuizAttempts,
   mockRedeemPackages,
-  mockQuizzes,
   mockBudgetStatus,
-  mockAttendanceLog,
-  mockAdzanLog,
 } from "../services/mockData";
+import { supabase } from "../services/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────────
 interface AppContextType {
@@ -38,14 +31,14 @@ interface AppContextType {
   updateParticipantStatus: (id: string, status: ParticipantStatus) => void;
 
   // Points
-  points: typeof mockPoints;
+  points: Record<string, PointValue>;
 
   // Transactions
   transactions: Transaction[];
   addTransaction: (t: Omit<Transaction, "id" | "timestamp">) => void;
 
   // Attendance
-  attendanceLog: typeof mockAttendanceLog;
+  attendanceLog: AttendanceEntry[];
   recordAttendance: (
     participantId: string,
     prayerTime: string,
@@ -53,7 +46,7 @@ interface AppContextType {
   ) => void;
 
   // Adzan
-  adzanLog: typeof mockAdzanLog;
+  adzanLog: AdzanEntry[];
   recordAdzan: (
     participantId: string,
     prayerTime: string,
@@ -66,7 +59,7 @@ interface AppContextType {
   requestRedeem: (
     participantId: string,
     packageId: string,
-  ) => { success: boolean; message: string };
+  ) => Promise<{ success: boolean; message: string }>;
   processRedeem: (redeemId: string, action: "approved" | "rejected") => void;
 
   // Quiz
@@ -76,7 +69,7 @@ interface AppContextType {
     participantId: string,
     quizId: string,
     answers: number[],
-  ) => { score: number; earnedPoints: number };
+  ) => Promise<{ score: number; earnedPoints: number }>;
   addQuiz: (quiz: Omit<Quiz, "id" | "createdAt">) => void;
   toggleQuizActive: (quizId: string) => void;
   deleteQuiz: (quizId: string) => void;
@@ -88,12 +81,18 @@ interface AppContextType {
   toast: { show: boolean; message: string; type: "success" | "error" | "info" };
   showToast: (message: string, type?: "success" | "error" | "info") => void;
 
+  // Loading
+  isLoading: boolean;
+
   // Quick Absen Global
   quickAbsen: { isOpen: boolean; type: "none" | "attendance" | "adzan" };
   setQuickAbsen: (state: {
     isOpen: boolean;
     type: "none" | "attendance" | "adzan";
   }) => void;
+
+  // Migration
+  seedDatabase: () => Promise<void>;
 }
 
 type PointValue = {
@@ -130,40 +129,17 @@ const AppContext = createContext<AppContextType | null>(null);
 export const AppProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  // ─── Persistence ─────────────────────────────────────────────────────────────
-  const loadFromStorage = <T,>(key: string, fallback: T): T => {
-    const stored = localStorage.getItem(key);
-    return stored ? (JSON.parse(stored) as T) : fallback;
-  };
-
-  const [participants, setParticipants] = useState<Participant[]>(() =>
-    loadFromStorage("adzan_participants", mockParticipants),
-  );
-  const [points, setPoints] = useState<Record<string, PointValue>>(() =>
-    loadFromStorage("adzan_points", mockPoints),
-  );
-  const [transactions, setTransactions] = useState<Transaction[]>(() =>
-    loadFromStorage("adzan_transactions", mockTransactions),
-  );
-  const [attendanceLog, setAttendanceLog] = useState<AttendanceEntry[]>(() =>
-    loadFromStorage("adzan_attendance_log", mockAttendanceLog),
-  );
-  const [adzanLog, setAdzanLog] = useState<AdzanEntry[]>(() =>
-    loadFromStorage("adzan_adzan_log", mockAdzanLog),
-  );
-  const [redeemPackages] = useState<RedeemPackage[]>(mockRedeemPackages);
-  const [redeemHistory, setRedeemHistory] = useState<RedeemHistory[]>(() =>
-    loadFromStorage("adzan_redeem_history", mockRedeemHistory),
-  );
-  const [quizzes, setQuizzes] = useState<Quiz[]>(() =>
-    loadFromStorage("adzan_quizzes", mockQuizzes),
-  );
-  const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>(() =>
-    loadFromStorage("adzan_quiz_attempts", mockQuizAttempts),
-  );
-  const [budgetStatus, setBudgetStatus] = useState<BudgetStatus>(() =>
-    loadFromStorage("adzan_budget", mockBudgetStatus),
-  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [points, setPoints] = useState<Record<string, PointValue>>({});
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [attendanceLog, setAttendanceLog] = useState<AttendanceEntry[]>([]);
+  const [adzanLog, setAdzanLog] = useState<AdzanEntry[]>([]);
+  const [redeemPackages, setRedeemPackages] = useState<RedeemPackage[]>(mockRedeemPackages);
+  const [redeemHistory, setRedeemHistory] = useState<RedeemHistory[]>([]);
+  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
+  const [budgetStatus, setBudgetStatus] = useState<BudgetStatus>(mockBudgetStatus);
   const [toast, setToast] = useState<{
     show: boolean;
     message: string;
@@ -174,54 +150,187 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     type: "none" | "attendance" | "adzan";
   }>({ isOpen: false, type: "none" });
 
-  // Save to storage
-  useEffect(
-    () =>
-      localStorage.setItem("adzan_participants", JSON.stringify(participants)),
-    [participants],
-  );
-  useEffect(
-    () => localStorage.setItem("adzan_points", JSON.stringify(points)),
-    [points],
-  );
-  useEffect(
-    () =>
-      localStorage.setItem("adzan_transactions", JSON.stringify(transactions)),
-    [transactions],
-  );
-  useEffect(
-    () =>
-      localStorage.setItem(
-        "adzan_attendance_log",
-        JSON.stringify(attendanceLog),
-      ),
-    [attendanceLog],
-  );
-  useEffect(
-    () => localStorage.setItem("adzan_adzan_log", JSON.stringify(adzanLog)),
-    [adzanLog],
-  );
-  useEffect(
-    () =>
-      localStorage.setItem(
-        "adzan_redeem_history",
-        JSON.stringify(redeemHistory),
-      ),
-    [redeemHistory],
-  );
-  useEffect(
-    () => localStorage.setItem("adzan_quizzes", JSON.stringify(quizzes)),
-    [quizzes],
-  );
-  useEffect(
-    () =>
-      localStorage.setItem("adzan_quiz_attempts", JSON.stringify(quizAttempts)),
-    [quizAttempts],
-  );
-  useEffect(
-    () => localStorage.setItem("adzan_budget", JSON.stringify(budgetStatus)),
-    [budgetStatus],
-  );
+  // ─── Initial Load ───────────────────────────────────────────────────────────
+  const loadAllData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [
+        { data: pData },
+        { data: tData },
+        { data: attData },
+        { data: adzData },
+        { data: rpData },
+        { data: rhData },
+        { data: qData },
+        { data: qaData },
+        { data: bData },
+      ] = await Promise.all([
+        supabase.from("participants").select("*").order("nama"),
+        supabase.from("transactions").select("*").order("timestamp", { ascending: false }),
+        supabase.from("attendance_log").select("*").order("date", { ascending: false }),
+        supabase.from("adzan_log").select("*").order("date", { ascending: false }),
+        supabase.from("redeem_packages").select("*").order("points_required"),
+        supabase.from("redeem_history").select("*").order("requested_at", { ascending: false }),
+        supabase.from("quizzes").select("*").order("created_at", { ascending: false }),
+        supabase.from("quiz_attempts").select("*").order("completed_at", { ascending: false }),
+        supabase.from("budget_settings").select("*").limit(1),
+      ]);
+
+      const mappedParticipants = (pData || []).map((p: any) => ({
+        id: p.id,
+        nama: p.nama,
+        status: p.status,
+        createdAt: new Date(p.created_at),
+        updatedAt: new Date(p.updated_at)
+      }));
+
+      const mappedTransactions = (tData || []).map((t: any) => ({
+        id: t.id,
+        participantId: t.participant_id,
+        type: t.type,
+        points: t.points,
+        reason: t.reason,
+        timestamp: new Date(t.timestamp),
+        adminId: t.admin_id
+      }));
+
+      const mappedAttendance = (attData || []).map((a: any) => ({
+        id: a.id,
+        participantId: a.participant_id,
+        participantName: mappedParticipants.find((p: any) => p.id === a.participant_id)?.nama || 'Unknown',
+        prayerTime: a.prayer_time,
+        date: a.date,
+        points: a.points
+      }));
+
+      const mappedAdzan = (adzData || []).map((a: any) => ({
+        id: a.id,
+        participantId: a.participant_id,
+        participantName: mappedParticipants.find((p: any) => p.id === a.participant_id)?.nama || 'Unknown',
+        prayerTime: a.prayer_time,
+        attitude: a.attitude,
+        attitudePoints: a.attitude_points,
+        adzanPoints: a.adzan_points,
+        total: a.total,
+        date: a.date
+      }));
+
+      const mappedRedeemHistory = (rhData || []).map((r: any) => ({
+        id: r.id,
+        participantId: r.participant_id,
+        packageId: r.package_id,
+        packageName: r.package_name,
+        pointsSpent: r.points_spent,
+        status: r.status,
+        requestedAt: new Date(r.requested_at),
+        processedAt: r.processed_at ? new Date(r.processed_at) : undefined,
+        processedBy: r.processed_by
+      }));
+
+      const mappedQuizzes = (qData || []).map((q: any) => ({
+        id: q.id,
+        title: q.title,
+        description: q.description,
+        questions: q.questions,
+        createdAt: new Date(q.created_at),
+        isActive: q.is_active
+      }));
+
+      const mappedQuizAttempts = (qaData || []).map((qa: any) => ({
+        id: qa.id,
+        participantId: qa.participant_id,
+        quizId: qa.quiz_id,
+        score: qa.score,
+        earnedPoints: qa.earned_points,
+        answers: qa.answers,
+        completedAt: new Date(qa.completed_at)
+      }));
+
+      setParticipants(mappedParticipants);
+      setTransactions(mappedTransactions);
+      setAttendanceLog(mappedAttendance);
+      setAdzanLog(mappedAdzan);
+      setRedeemHistory(mappedRedeemHistory);
+      setQuizzes(mappedQuizzes);
+      setQuizAttempts(mappedQuizAttempts);
+
+      if (rpData) {
+        setRedeemPackages(rpData.map((rp: any) => ({
+          id: rp.id,
+          name: rp.name,
+          description: rp.description,
+          pointsRequired: rp.points_required,
+          diamond: rp.diamond,
+          weeklyQuota: rp.weekly_quota,
+          remainingQuota: rp.weekly_quota, // Simplified
+          budgetCost: rp.budget_cost,
+          isAvailable: rp.is_available
+        })));
+      }
+
+      // Aggregating points
+      const pointMap: Record<string, PointValue> = {};
+      mappedParticipants.forEach((p: any) => { pointMap[p.id] = emptyPointValue(); });
+      
+      mappedTransactions.forEach((t: any) => {
+        if (!pointMap[t.participantId]) pointMap[t.participantId] = emptyPointValue();
+        const p = pointMap[t.participantId];
+        if (t.type === 'attendance') p.attendance += t.points;
+        if (t.type === 'adzan') p.adzan += t.points;
+        if (t.type === 'quiz') p.quiz += t.points;
+        p.total += t.points;
+      });
+
+      mappedAttendance.forEach((a: any) => {
+        if (pointMap[a.participantId]) pointMap[a.participantId].attendanceCount++;
+      });
+
+      mappedAdzan.forEach((a: any) => {
+        if (pointMap[a.participantId]) pointMap[a.participantId].adzanCount++;
+      });
+
+      setPoints(pointMap);
+
+      if (bData && bData[0]) {
+        const usedBudget = mappedRedeemHistory.filter((r: any) => r.status === 'approved')
+          .reduce((sum: number, r: any) => {
+            const pkg = rpData?.find((pkg: any) => pkg.id === r.packageId);
+            return sum + (pkg?.budget_cost ?? 0);
+          }, 0);
+        
+        setBudgetStatus({
+          totalBudget: bData[0].total_budget,
+          usedBudget,
+          usagePercent: Math.round((usedBudget / bData[0].total_budget) * 100),
+          warning: (usedBudget / bData[0].total_budget) >= 0.8,
+          month: bData[0].month,
+        });
+      }
+
+    } catch (error) {
+      console.error("Error loading data from Supabase:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAllData();
+  }, [loadAllData]);
+
+  // ─── Realtime Subscriptions ────────────────────────────────────────────────
+  useEffect(() => {
+    const channel = supabase
+      .channel("db-changes")
+      .on("postgres_changes", { event: "*", schema: "public" }, () => {
+        loadAllData(); // Refresh on any change for consistency
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadAllData]);
 
   const showToast = useCallback(
     (message: string, type: "success" | "error" | "info" = "success") => {
@@ -232,328 +341,336 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   const addTransaction = useCallback(
-    (t: Omit<Transaction, "id" | "timestamp">) => {
-      const tx: Transaction = {
-        ...t,
-        id: `t${Date.now()}`,
-        timestamp: new Date(),
-      };
-      setTransactions((prev) => [tx, ...prev]);
+    async (t: Omit<Transaction, "id" | "timestamp">) => {
+      const { error } = await supabase.from("transactions").insert([
+        { 
+          participant_id: t.participantId,
+          type: t.type,
+          points: t.points,
+          reason: t.reason,
+          admin_id: t.adminId
+        }
+      ]);
+      if (error) console.error("Error adding transaction:", error);
     },
     [],
   );
 
   const addParticipant = useCallback(
-    (nama: string) => {
-      const newP: Participant = {
-        id: `p${Date.now()}`,
-        nama,
-        status: "baru",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      setParticipants((prev) => [...prev, newP]);
-      setPoints((prev) => ({
-        ...prev,
-        [newP.id]: {
-          attendance: 0,
-          attitude: 0,
-          adzan: 0,
-          quiz: 0,
-          total: 0,
-          adzanCount: 0,
-          attendanceCount: 0,
-        },
-      }));
+    async (nama: string) => {
+      const { error } = await supabase.from("participants").insert([{ nama }]);
+      if (error) {
+        showToast("Gagal menambah peserta", "error");
+        return;
+      }
       showToast(`Peserta "${nama}" berhasil ditambahkan.`);
+      loadAllData();
     },
-    [showToast],
+    [showToast, loadAllData],
   );
 
   const updateParticipantStatus = useCallback(
-    (id: string, status: ParticipantStatus) => {
-      setParticipants((prev) =>
-        prev.map((p) =>
-          p.id === id ? { ...p, status, updatedAt: new Date() } : p,
-        ),
-      );
+    async (id: string | number, status: ParticipantStatus) => {
+      const { error } = await supabase.from("participants").update({ status, updated_at: new Date() }).eq("id", id);
+      if (error) {
+        showToast("Gagal update status", "error");
+        return;
+      }
       showToast("Status peserta berhasil diperbarui.");
+      loadAllData();
     },
-    [showToast],
+    [showToast, loadAllData],
   );
 
   const recordAttendance = useCallback(
-    (participantId: string, prayerTime: string, attitude: string = "Bagus") => {
-      const participant = participants.find((p) => p.id === participantId);
+    async (participantId: string | number, prayerTime: string, attitude: string = "Bagus") => {
+      const participant = participants.find((p) => String(p.id) === String(participantId));
       if (!participant) return;
 
       const attitudePointsMap: Record<string, number> = {
         Bagus: 5,
-        "Kurang Fokus": 3,
-        Ribut: 0,
+        "Cukup Bagus": 3,
+        Ribut: 1,
       };
       const pointsToAdd = attitudePointsMap[attitude] ?? 5;
 
-      interface AttendanceEntry {
-        id: string;
-        participantId: string;
-        participantName: string;
-        prayerTime: string;
-        date: string;
-        points: number;
-      }
-      const entry: AttendanceEntry = {
-        id: Math.random().toString(36).substr(2, 9),
-        participantId,
-        participantName: participant.nama,
-        prayerTime,
-        date: new Date().toISOString().split("T")[0],
+      const { error } = await supabase.from("attendance_log").insert([{
+        participant_id: participantId,
+        prayer_time: prayerTime,
         points: pointsToAdd,
-      };
-      setAttendanceLog((prev) => [entry, ...prev]);
-      setPoints((prev) => {
-        const cur = prev[participantId] ?? emptyPointValue();
-        return {
-          ...prev,
-          [participantId]: {
-            ...cur,
-            attendance: cur.attendance + pointsToAdd,
-            attendanceCount: cur.attendanceCount + 1,
-            total: cur.total + pointsToAdd,
-          },
-        };
-      });
+        date: new Date().toISOString().split("T")[0]
+      }]);
+
+      if (error) {
+        showToast("Gagal mencatat latihan", "error");
+        return;
+      }
+
       const reason = `Latihan${prayerTime ? ` ${prayerTime}` : ""} - Sikap: ${attitude}`;
-      addTransaction({
-        participantId,
+      await addTransaction({
+        participantId: String(participantId),
         type: "attendance",
         points: pointsToAdd,
         reason,
         adminId: "admin",
       });
-      showToast(
-        `Latihan ${participant.nama} (Sikap: ${attitude}) berhasil dicatat (+${pointsToAdd} poin).`,
-      );
+      showToast(`Latihan ${participant.nama} berhasil dicatat (+${pointsToAdd} poin).`);
+      loadAllData();
     },
-    [participants, addTransaction, showToast],
+    [participants, addTransaction, showToast, loadAllData],
   );
 
   const recordAdzan = useCallback(
-    (participantId: string, prayerTime: string, attitude: string) => {
-      const participant = participants.find((p) => p.id === participantId);
+    async (participantId: string | number, prayerTime: string, attitude: string) => {
+      const participant = participants.find((p) => String(p.id) === String(participantId));
       if (!participant) return;
-      const attitudePointsMap: Record<string, number> = {
-        Bagus: 5,
-        "Kurang Fokus": 3,
-        Ribut: 0,
-      };
-      const attitudePoints = attitudePointsMap[attitude] ?? 0;
-      const totalPoints = 10 + attitudePoints;
-      const entry = {
-        id: `az${Date.now()}`,
-        participantId,
-        participantName: participant.nama,
-        prayerTime,
-        attitude,
-        attitudePoints,
-        adzanPoints: 10,
+      
+      const totalPoints = 10;
+      const { error } = await supabase.from("adzan_log").insert([{
+        participant_id: participantId,
+        prayer_time: prayerTime,
+        attitude: attitude,
+        attitude_points: 0,
+        adzan_points: 10,
         total: totalPoints,
-        date: new Date().toISOString().split("T")[0],
-      };
-      setAdzanLog((prev) => [entry, ...prev]);
-      setPoints((prev) => {
-        const cur = prev[participantId] ?? emptyPointValue();
-        return {
-          ...prev,
-          [participantId]: {
-            ...cur,
-            attitude: cur.attitude + attitudePoints,
-            adzan: cur.adzan + 10,
-            total: cur.total + totalPoints,
-            adzanCount: cur.adzanCount + 1,
-          },
-        };
-      });
+        date: new Date().toISOString().split("T")[0]
+      }]);
+
+      if (error) {
+        showToast("Gagal mencatat adzan", "error");
+        return;
+      }
+
       const reason = `Adzan${prayerTime ? ` ${prayerTime}` : ""} - Sikap: ${attitude}`;
-      addTransaction({
-        participantId,
+      await addTransaction({
+        participantId: String(participantId),
         type: "adzan",
         points: totalPoints,
         reason,
         adminId: "admin",
       });
-      showToast(
-        `Adzan ${participant.nama}${prayerTime ? ` untuk ${prayerTime}` : ""} (Sikap: ${attitude}) berhasil dicatat (+${totalPoints} poin).`,
-      );
+      showToast(`Adzan ${participant.nama} berhasil dicatat (+10 poin).`);
+      loadAllData();
     },
-    [participants, addTransaction, showToast],
+    [participants, addTransaction, showToast, loadAllData],
   );
 
   const requestRedeem = useCallback(
-    (participantId: string, packageId: string) => {
-      const pkg = redeemPackages.find((p) => p.id === packageId);
-      const participant = participants.find((p) => p.id === participantId);
+    async (participantId: string | number, packageId: string | number) => {
+      const pkg = redeemPackages.find((p) => String(p.id) === String(packageId));
+      const participant = participants.find((p) => String(p.id) === String(participantId));
       if (!pkg || !participant)
         return { success: false, message: "Data tidak ditemukan." };
-      const participantPoints = points[participantId]?.total ?? 0;
+      
+      const participantPoints = points[String(participantId)]?.total ?? 0;
       if (participantPoints < pkg.pointsRequired)
         return { success: false, message: "Poin tidak mencukupi." };
+      
       const thisWeekRedeems = redeemHistory.filter(
         (r) =>
-          r.participantId === participantId &&
-          r.packageId === packageId &&
+          String(r.participantId) === String(participantId) &&
+          String(r.packageId) === String(packageId) &&
           r.status !== "rejected",
       ).length;
+      
       if (thisWeekRedeems >= pkg.weeklyQuota)
-        return {
-          success: false,
-          message: "Kuota redeem mingguan sudah habis.",
-        };
+        return { success: false, message: "Kuota redeem mingguan sudah habis." };
+      
       if (budgetStatus.usedBudget + pkg.budgetCost > budgetStatus.totalBudget)
         return { success: false, message: "Budget bulan ini sudah habis." };
-      const rh: RedeemHistory = {
-        id: `rh${Date.now()}`,
-        participantId,
-        packageId,
-        packageName: pkg.name,
-        pointsSpent: pkg.pointsRequired,
-        status: "pending",
-        requestedAt: new Date(),
-      };
-      setRedeemHistory((pp) => [rh, ...pp]);
+
+      const { error } = await supabase.from("redeem_history").insert([{
+        participant_id: participantId,
+        package_id: packageId,
+        package_name: pkg.name,
+        points_spent: pkg.pointsRequired,
+        status: "pending"
+      }]);
+
+      if (error) return { success: false, message: "Gagal mengirim permintaan redeem." };
+
       showToast(`Permintaan redeem "${pkg.name}" berhasil dikirim!`);
+      loadAllData();
       return { success: true, message: "Permintaan redeem berhasil dikirim." };
     },
-    [
-      redeemPackages,
-      participants,
-      points,
-      redeemHistory,
-      budgetStatus,
-      showToast,
-    ],
+    [redeemPackages, participants, points, redeemHistory, budgetStatus, showToast, loadAllData],
   );
 
   const processRedeem = useCallback(
-    (redeemId: string, action: "approved" | "rejected") => {
-      setRedeemHistory((prev) =>
-        prev.map((r) => {
-          if (r.id !== redeemId) return r;
-          const updated = {
-            ...r,
-            status: action,
-            processedAt: new Date(),
-            processedBy: "admin",
-          };
-          if (action === "approved") {
-            const pkg = redeemPackages.find((p) => p.id === r.packageId);
-            if (pkg) {
-              setPoints((pp) => {
-                const cur = pp[r.participantId] ?? emptyPointValue();
-                return {
-                  ...pp,
-                  [r.participantId]: {
-                    ...cur,
-                    total: cur.total - r.pointsSpent,
-                  },
-                };
-              });
-              addTransaction({
-                participantId: r.participantId,
-                type: "redeem",
-                points: -r.pointsSpent,
-                reason: `Redeem: ${r.packageName}`,
-                adminId: "admin",
-              });
-              setBudgetStatus((bs) => ({
-                ...bs,
-                usedBudget: bs.usedBudget + pkg.budgetCost,
-                usagePercent: Math.round(
-                  ((bs.usedBudget + pkg.budgetCost) / bs.totalBudget) * 100,
-                ),
-              }));
-            }
-          }
-          return updated;
-        }),
-      );
-      showToast(
-        `Permintaan redeem berhasil ${action === "approved" ? "disetujui" : "ditolak"}.`,
-        action === "approved" ? "success" : "error",
-      );
+    async (redeemId: string | number, action: "approved" | "rejected") => {
+      const r = redeemHistory.find(item => String(item.id) === String(redeemId));
+      if (!r) return;
+
+      const { error } = await supabase.from("redeem_history").update({
+        status: action,
+        processed_at: new Date(),
+        processed_by: "admin"
+      }).eq("id", redeemId);
+
+      if (error) {
+        showToast("Gagal memproses redeem", "error");
+        return;
+      }
+
+      if (action === "approved") {
+        await addTransaction({
+          participantId: String(r.participantId),
+          type: "redeem",
+          points: -r.pointsSpent,
+          reason: `Redeem: ${r.packageName}`,
+          adminId: "admin",
+        });
+      }
+
+      showToast(`Permintaan redeem berhasil ${action === "approved" ? "disetujui" : "ditolak"}.`);
+      loadAllData();
     },
-    [redeemPackages, addTransaction, showToast],
+    [redeemHistory, addTransaction, showToast, loadAllData],
   );
 
   const submitQuiz = useCallback(
-    (participantId: string, quizId: string, answers: number[]) => {
-      const quiz = quizzes.find((q) => q.id === quizId);
+    async (participantId: string | number, quizId: string | number, answers: number[]) => {
+      const quiz = quizzes.find((q) => String(q.id) === String(quizId));
       if (!quiz) return { score: 0, earnedPoints: 0 };
+      
       let correct = 0;
       answers.forEach((ans, i) => {
         if (quiz.questions[i]?.correctAnswer === ans) correct++;
       });
       const score = Math.round((correct / quiz.questions.length) * 100);
       const earnedPoints = correct;
-      const attempt: QuizAttempt = {
-        id: `qa${Date.now()}`,
-        participantId,
-        quizId,
+
+      const today = new Date().toISOString().split("T")[0];
+      const alreadyEarnedToday = quizAttempts.some(
+        (a) =>
+          String(a.participantId) === String(participantId) &&
+          new Date(a.completedAt).toISOString().split("T")[0] === today &&
+          a.earnedPoints > 0,
+      );
+
+      const finalEarnedPoints = alreadyEarnedToday ? 0 : earnedPoints;
+
+      const { error } = await supabase.from("quiz_attempts").insert([{
+        participant_id: participantId,
+        quiz_id: quizId,
         score,
-        earnedPoints,
+        earned_points: finalEarnedPoints,
         answers,
-        completedAt: new Date(),
-      };
-      setQuizAttempts((prev) => [attempt, ...prev]);
-      setPoints((prev) => {
-        const cur = prev[participantId] ?? emptyPointValue();
-        return {
-          ...prev,
-          [participantId]: {
-            ...cur,
-            quiz: cur.quiz + earnedPoints,
-            total: cur.total + earnedPoints,
-          },
-        };
-      });
-      addTransaction({
-        participantId,
-        type: "quiz",
-        points: earnedPoints,
-        reason: `Quiz: ${quiz.title} - Skor: ${score}%`,
-        adminId: "system",
-      });
-      return { score, earnedPoints };
+        completed_at: new Date()
+      }]);
+
+      if (error) {
+        showToast("Gagal menyimpan hasil quiz", "error");
+        return { score, earnedPoints: 0 };
+      }
+
+      if (finalEarnedPoints > 0) {
+        await addTransaction({
+          participantId: String(participantId),
+          type: "quiz",
+          points: finalEarnedPoints,
+          reason: `Quiz: ${quiz.title} - Skor: ${score}%`,
+          adminId: "system",
+        });
+      } else if (earnedPoints > 0 && alreadyEarnedToday) {
+        showToast("Poin quiz hanya bisa didapat sekali sehari.", "info");
+      }
+
+      loadAllData();
+      return { score, earnedPoints: finalEarnedPoints };
     },
-    [quizzes, addTransaction],
+    [quizzes, quizAttempts, addTransaction, showToast, loadAllData],
   );
 
   const addQuiz = useCallback(
-    (quiz: Omit<Quiz, "id" | "createdAt">) => {
-      const newQuiz: Quiz = {
-        ...quiz,
-        id: `q${Date.now()}`,
-        createdAt: new Date(),
-      };
-      setQuizzes((prev) => [...prev, newQuiz]);
-      showToast(`Quiz "${quiz.title}" berhasil ditambahkan.`);
+    async (quiz: Omit<Quiz, "id" | "createdAt">) => {
+      const { error } = await supabase.from("quizzes").insert([{
+        title: quiz.title,
+        description: quiz.description,
+        questions: quiz.questions,
+        is_active: quiz.isActive
+      }]);
+      if (error) showToast("Gagal menambah quiz", "error");
+      else showToast(`Quiz "${quiz.title}" berhasil ditambahkan.`);
     },
     [showToast],
   );
 
-  const toggleQuizActive = useCallback((quizId: string) => {
-    setQuizzes((prev) =>
-      prev.map((q) => (q.id === quizId ? { ...q, isActive: !q.isActive } : q)),
-    );
-  }, []);
+  const toggleQuizActive = useCallback(async (quizId: string | number) => {
+    const q = quizzes.find(item => String(item.id) === String(quizId));
+    if (!q) return;
+    const { error } = await supabase.from("quizzes").update({ is_active: !q.isActive }).eq("id", quizId);
+    if (!error) loadAllData();
+  }, [quizzes, loadAllData]);
 
   const deleteQuiz = useCallback(
-    (quizId: string) => {
-      setQuizzes((prev) => prev.filter((q) => q.id !== quizId));
-      showToast("Quiz berhasil dihapus.", "info");
+    async (quizId: string | number) => {
+      const { error } = await supabase.from("quizzes").delete().eq("id", quizId);
+      if (error) showToast("Gagal menghapus quiz", "error");
+      else {
+        showToast("Quiz berhasil dihapus.", "info");
+        loadAllData();
+      }
     },
-    [showToast],
+    [showToast, loadAllData],
   );
+
+  const seedDatabase = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      showToast("Sedang memindahkan data ke Supabase...", "info");
+      
+      // Import mock data dynamically to avoid clutter
+      const { 
+        mockParticipants, 
+        mockQuizzes, 
+        mockRedeemPackages, 
+        mockBudgetStatus 
+      } = await import("../services/mockData");
+
+      // 1. Seed Participants
+      await supabase.from("participants").insert(
+        mockParticipants.map(p => ({ nama: p.nama, status: p.status }))
+      );
+
+      // 2. Seed Packages
+      await supabase.from("redeem_packages").insert(
+        mockRedeemPackages.map(rp => ({
+          name: rp.name,
+          description: rp.description,
+          points_required: rp.pointsRequired,
+          diamond: rp.diamond,
+          weekly_quota: rp.weeklyQuota,
+          budget_cost: rp.budgetCost,
+          is_available: rp.isAvailable
+        }))
+      );
+
+      // 3. Seed Quizzes
+      await supabase.from("quizzes").insert(
+        mockQuizzes.map(q => ({
+          title: q.title,
+          description: q.description,
+          questions: q.questions,
+          is_active: q.isActive
+        }))
+      );
+
+      // 4. Seed Budget
+      await supabase.from("budget_settings").insert([{
+        month: mockBudgetStatus.month,
+        total_budget: mockBudgetStatus.totalBudget
+      }]);
+
+      showToast("Berhasil memindahkan data! Silakan refresh halaman.", "success");
+      loadAllData();
+    } catch (error) {
+      console.error("Seeding error:", error);
+      showToast("Gagal memindahkan data.", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [loadAllData, showToast]);
 
   return (
     <AppContext.Provider
@@ -581,8 +698,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         budgetStatus,
         toast,
         showToast,
+        isLoading,
         quickAbsen,
         setQuickAbsen,
+        seedDatabase,
       }}
     >
       {children}

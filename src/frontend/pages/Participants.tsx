@@ -41,16 +41,21 @@ export const Participants: React.FC = () => {
   const [confirmDialog, setConfirmDialog] = useState<{ id: string; status: ParticipantStatus; name: string } | null>(null);
   const [detailModal, setDetailModal] = useState<Participant | null>(null);
 
-  const filtered = participants.filter(p => {
-    const matchSearch = p.nama.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === 'all' || p.status === filterStatus;
-    return matchSearch && matchStatus;
-  });
+  const filtered = participants
+    .filter(p => {
+      const matchSearch = p.nama.toLowerCase().includes(search.toLowerCase());
+      const matchStatus = filterStatus === 'all' || p.status === filterStatus;
+      return matchSearch && matchStatus;
+    })
+    .sort((a, b) => {
+      const pointsA = points[String(a.id)]?.total ?? 0;
+      const pointsB = points[String(b.id)]?.total ?? 0;
+      return pointsB - pointsA;
+    });
 
   const handleAdd = () => {
     if (!newName.trim()) { setNameError('Nama wajib diisi'); return; }
     if (newName.trim().length < 3) { setNameError('Nama minimal 3 karakter'); return; }
-    if (participants.length >= 12) { setNameError('Maksimal 12 peserta'); return; }
     addParticipant(newName.trim());
     setNewName('');
     setNameError('');
@@ -70,7 +75,7 @@ export const Participants: React.FC = () => {
             <Button variant="primary" leftIcon={<Mic className="w-4 h-4" />} onClick={() => { setMultiType('adzan'); setSelectedIds([]); setMultiModal(true); }}>
               Absen Adzan
             </Button>
-            <Button variant="ghost" className="bg-gray-100" leftIcon={<UserPlus className="w-4 h-4" />} onClick={() => setAddModal(true)} disabled={participants.length >= 12}>
+            <Button variant="ghost" className="bg-gray-100" leftIcon={<UserPlus className="w-4 h-4" />} onClick={() => setAddModal(true)}>
               Tambah Peserta
             </Button>
           </div>
@@ -166,7 +171,7 @@ export const Participants: React.FC = () => {
         </>}
       >
         <Input label="Nama Lengkap Peserta" placeholder="cth: Ahmad Faiz" value={newName} onChange={e => { setNewName(e.target.value); setNameError(''); }} error={nameError} onKeyDown={e => e.key === 'Enter' && handleAdd()} autoFocus />
-        <p className="mt-2 text-xs text-gray-400">{participants.length}/12 peserta terdaftar</p>
+        <p className="mt-2 text-xs text-gray-400">{participants.length} peserta terdaftar</p>
       </Modal>
 
       {/* Confirm Dialog */}
@@ -218,7 +223,7 @@ export const Participants: React.FC = () => {
             <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
               <label className="label text-emerald-700 mb-2">Penilaian Sikap Latihan (untuk semua yang dipilih)</label>
               <div className="grid grid-cols-3 gap-2">
-                {['Bagus', 'Kurang Fokus', 'Ribut'].map(label => (
+                {['Bagus', 'Cukup Bagus', 'Ribut'].map(label => (
                   <button key={label} onClick={() => setAttAttitude(label)}
                     className={cn('px-3 py-2 rounded-xl text-xs font-bold transition-all border-2', 
                     attAttitude === label ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-emerald-100 text-emerald-600 hover:border-emerald-200')}>

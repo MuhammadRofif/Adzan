@@ -9,8 +9,8 @@ import { cn } from '../utils/cn';
 // Prayer times removed as per user request
 const ATTITUDES = [
   { label: 'Bagus', points: 5, color: 'border-emerald-400 bg-emerald-50 text-emerald-700' },
-  { label: 'Kurang Fokus', points: 3, color: 'border-yellow-400 bg-yellow-50 text-yellow-700' },
-  { label: 'Ribut', points: 0, color: 'border-red-300 bg-red-50 text-red-700' },
+  { label: 'Cukup Bagus', points: 3, color: 'border-yellow-400 bg-yellow-50 text-yellow-700' },
+  { label: 'Ribut', points: 1, color: 'border-red-300 bg-red-50 text-red-700' },
 ];
 
 export const Dashboard: React.FC = () => {
@@ -168,7 +168,7 @@ export const Dashboard: React.FC = () => {
       {/* Adzan Modal */}
       <Modal isOpen={adzanModal} onClose={() => setAdzanModal(false)} title="Catat Adzan"
         footer={<>
-          <Button onClick={() => { if (adzParticipant) { recordAdzan(adzParticipant, '', adzAttitude); setAdzanModal(false); setAdzParticipant(''); } }} className="w-full sm:w-auto sm:ml-3" disabled={!adzParticipant}>Simpan (+{(ATTITUDES.find(a => a.label === adzAttitude)?.points ?? 0) + 10} Poin)</Button>
+          <Button onClick={() => { if (adzParticipant) { recordAdzan(adzParticipant, '', adzAttitude); setAdzanModal(false); setAdzParticipant(''); } }} className="w-full sm:w-auto sm:ml-3" disabled={!adzParticipant}>Simpan (+10 Poin)</Button>
           <Button variant="ghost" onClick={() => setAdzanModal(false)} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
         </>}
       >
@@ -184,7 +184,6 @@ export const Dashboard: React.FC = () => {
                 <button key={att.label} onClick={() => setAdzAttitude(att.label)}
                   className={cn('border-2 rounded-xl p-3 text-center transition-all duration-200', att.label === adzAttitude ? att.color + ' border-opacity-100' : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300')}>
                   <span className="block text-sm font-semibold">{att.label}</span>
-                  <span className="text-xs opacity-70">+{att.points} poin</span>
                 </button>
               ))}
             </div>

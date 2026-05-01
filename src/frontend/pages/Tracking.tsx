@@ -9,8 +9,8 @@ import { cn } from '../utils/cn';
 const PRAYER_TIMES = ['Subuh', 'Duhur', 'Ashar', 'Maghrib', 'Isya'];
 const ATTITUDES = [
   { label: 'Bagus', points: 5, bg: 'border-emerald-400 bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
-  { label: 'Kurang Fokus', points: 3, bg: 'border-yellow-400 bg-yellow-50 text-yellow-700', dot: 'bg-yellow-500' },
-  { label: 'Ribut', points: 0, bg: 'border-red-300 bg-red-50 text-red-700', dot: 'bg-red-500' },
+  { label: 'Cukup Bagus', points: 3, bg: 'border-yellow-400 bg-yellow-50 text-yellow-700', dot: 'bg-yellow-500' },
+  { label: 'Ribut', points: 1, bg: 'border-red-300 bg-red-50 text-red-700', dot: 'bg-red-500' },
 ];
 
 export const Tracking: React.FC = () => {
@@ -182,7 +182,6 @@ export const Tracking: React.FC = () => {
                 <button key={att.label} onClick={() => setAdzAttitude(att.label)}
                   className={cn('border-2 rounded-xl p-3 text-center transition-all duration-200 text-sm', att.label === adzAttitude ? att.bg : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300')}>
                   <span className="block font-semibold">{att.label}</span>
-                  <span className="text-xs opacity-70">+{att.points} poin</span>
                 </button>
               ))}
             </div>

@@ -25,7 +25,7 @@ const Toggle: React.FC<{ checked: boolean; onChange: () => void }> = ({ checked,
 );
 
 export const Settings: React.FC = () => {
-  const { participants, budgetStatus, showToast } = useApp();
+  const { participants, budgetStatus, showToast, seedDatabase } = useApp() as any;
   const [notifications, setNotifications] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [autoReset, setAutoReset] = useState(true);
@@ -92,9 +92,9 @@ export const Settings: React.FC = () => {
           <h2 className="font-bold text-gray-900 font-heading mb-4">Tentang Sistem</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
             {[
-              { label: 'Versi', value: '1.0.0' },
+              { label: 'Versi', value: '1.2.0' },
               { label: 'Total Peserta', value: participants.length.toString() },
-              { label: 'Maks Peserta', value: '12' },
+              { label: 'Database', value: 'Supabase' },
               { label: 'Poin Adzan', value: '+10' },
             ].map(item => (
               <div key={item.label} className="bg-gray-50 rounded-xl p-4">
@@ -106,13 +106,37 @@ export const Settings: React.FC = () => {
           <div className="mt-4 bg-primary-50 border border-primary-100 rounded-xl p-4">
             <p className="text-sm text-primary-800 font-medium mb-1">📋 Sistem Poin</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-primary-700">
-              {[['Kehadiran', '+5 poin'], ['Adzan', '+10 poin'], ['Sikap Bagus', '+5 poin'], ['Sikap Kurang', '+3 poin']].map(([k, v]) => (
+              {[['Latihan (Bagus)', '+5 poin'], ['Adzan (Fix)', '+10 poin'], ['Quiz', '+1-5 poin'], ['Cukup Bagus', '+3 poin']].map(([k, v]) => (
                 <div key={k} className="bg-white/50 rounded-lg p-2">
                   <p className="font-semibold">{k}</p>
                   <p>{v}</p>
                 </div>
               ))}
             </div>
+          </div>
+        </Card>
+
+        {/* Database Migration */}
+        <Card className="md:col-span-2 border-amber-200 bg-amber-50">
+          <h2 className="font-bold text-amber-900 font-heading mb-4 flex items-center gap-2">
+            <Database className="w-5 h-5" /> Migrasi Supabase
+          </h2>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-amber-900">Pindahkan Data Awal</p>
+              <p className="text-sm text-amber-700">Klik tombol ini hanya SEKALI untuk memasukkan data awal (peserta, quiz, dll) ke database Supabase Anda.</p>
+            </div>
+            <Button 
+              variant="outline" 
+              className="bg-white border-amber-200 text-amber-700 hover:bg-amber-100 shrink-0"
+              onClick={() => {
+                if (confirm('Apakah Anda yakin ingin memindahkan data ke Supabase? Ini hanya dilakukan sekali.')) {
+                  seedDatabase();
+                }
+              }}
+            >
+              🚀 Mulai Migrasi
+            </Button>
           </div>
         </Card>
       </div>
