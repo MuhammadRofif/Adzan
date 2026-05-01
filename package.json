@@ -9,7 +9,7 @@
     "dev": "ts-node src/backend/server.ts",
     "build:frontend": "vite build",
     "build:backend": "tsc -p tsconfig.backend.json",
-    "build": "tsc",
+    "build": "vite build",
     "start": "node dist/backend/server.js",
     "preview": "vite preview",
     "test": "jest --testPathPattern=src/frontend",

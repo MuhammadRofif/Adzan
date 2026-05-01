@@ -8,7 +8,7 @@ export default defineConfig({
   root: '.',
   publicDir: 'public',
   build: {
-    outDir: 'dist/frontend',
+    outDir: 'dist',
     emptyOutDir: true,
   },
   resolve: {

@@ -25,14 +25,14 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
   - Configure environment variables (.env.example)
   - _Requirements: 17 (Kompatibilitas Perangkat)_
 
-- [~] 2. Create main dashboard layout dan navigation
+- [ ] 2. Create main dashboard layout dan navigation
   - Build responsive dashboard layout (desktop, tablet, mobile)
   - Implement navigation menu/sidebar
   - Create dashboard header dengan user info dan logout button
   - Build responsive grid system
   - _Requirements: 14 (Antarmuka Admin), 17 (Kompatibilitas Perangkat)_
 
-- [~] 3. Create adzan tracking table component
+- [ ] 3. Create adzan tracking table component
   - Build React component untuk display tracking table
   - Implement columns: Nama Peserta, Jumlah Adzan, Poin, Status
   - Implement sorting by Nama, Jumlah Adzan, Poin
@@ -40,14 +40,14 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
   - Display data dengan mock data
   - _Requirements: 1 (Tabel Tracking Adzan)_
 
-- [~] 4. Create quick-action buttons dan modal forms
+- [ ] 4. Create quick-action buttons dan modal forms
   - Build "Record Attendance" button dengan modal form
   - Build "Record Adzan" button dengan modal form (participant + attitude selection)
   - Implement form validation dan error handling
   - Provide immediate visual feedback (success/error messages)
   - _Requirements: 14 (Antarmuka Admin)_
 
-- [~] 5. Checkpoint - Verify UI foundation
+- [ ] 5. Checkpoint - Verify UI foundation
   - Test dashboard layout responsiveness
   - Test table rendering dan sorting
   - Test modal forms functionality
@@ -57,7 +57,7 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
 
 ### Phase 2: Dashboard Features & Statistics
 
-- [~] 6. Implement dashboard statistics section
+- [ ] 6. Implement dashboard statistics section
   - Display current month's total adzan count
   - Display average points per participant
   - Display top 5 performers (leaderboard)
@@ -65,7 +65,7 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
   - Implement statistics cards dengan icons
   - _Requirements: 13 (Laporan dan Statistik)_
 
-- [~] 7. Create participant detail view
+- [ ] 7. Create participant detail view
   - Build participant profile component
   - Display point breakdown by source (attendance, attitude, adzan, quiz)
   - Display redeem history (mock)
@@ -73,20 +73,20 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
   - Display transaction history (mock)
   - _Requirements: 13 (Laporan dan Statistik), 7 (Integrasi Quiz)_
 
-- [~] 8. Implement filtering dan search functionality
+- [ ] 8. Implement filtering dan search functionality
   - Create search by participant name
   - Implement filter by status (Aktif, Tidak Aktif, Baru)
   - Implement filter by month
   - Create advanced filter options
   - _Requirements: 13 (Laporan dan Statistik)_
 
-- [~] 9. Create export functionality UI
+- [ ] 9. Create export functionality UI
   - Implement CSV export button untuk transaction history
   - Implement PDF export button untuk monthly report
   - Create export dengan filtering options
   - _Requirements: 13 (Laporan dan Statistik)_
 
-- [~] 10. Checkpoint - Verify dashboard features
+- [ ] 10. Checkpoint - Verify dashboard features
   - Test statistics calculation dengan mock data
   - Test filtering dan search
   - Test export functionality
@@ -96,7 +96,7 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
 
 ### Phase 3: Quiz System UI
 
-- [~] 11. Create quiz React component
+- [ ] 11. Create quiz React component
   - Build Quiz interface component dengan question display
   - Implement answer selection (radio buttons atau multiple choice)
   - Implement quiz timer (optional)
@@ -104,14 +104,14 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
   - Implement quiz history view
   - _Requirements: 6 (Game Quiz Keislamanan)_
 
-- [~] 12. Create quiz management interface (admin)
+- [ ] 12. Create quiz management interface (admin)
   - Build form untuk create/edit quiz questions
   - Implement question validation
   - Build quiz list view dengan edit/delete options
   - Implement quiz preview functionality
   - _Requirements: 6 (Game Quiz Keislamanan)_
 
-- [~] 13. Checkpoint - Verify quiz UI
+- [ ] 13. Checkpoint - Verify quiz UI
   - Test quiz component rendering
   - Test answer selection
   - Test quiz results display
@@ -121,7 +121,7 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
 
 ### Phase 4: Redeem System UI
 
-- [~] 14. Create redeem packages display component
+- [ ] 14. Create redeem packages display component
   - Build redeem packages display dengan point requirements
   - Implement redeem button dengan confirmation modal
   - Display error messages untuk insufficient points/quota/budget
@@ -129,7 +129,7 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
   - Implement redeem history view
   - _Requirements: 8 (Sistem Redeem Hadiah), 10 (Fleksibilitas Waktu Redeem)_
 
-- [~] 15. Create redeem management interface (admin)
+- [ ] 15. Create redeem management interface (admin)
   - Build redeem requests list view
   - Implement redeem approval/rejection workflow UI
   - Display budget status dan warnings
@@ -137,7 +137,7 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
   - Implement redeem statistics
   - _Requirements: 8, 9 (Batasan Redeem Mingguan), 19 (Kontrol Budget)_
 
-- [~] 16. Checkpoint - Verify redeem UI
+- [ ] 16. Checkpoint - Verify redeem UI
   - Test redeem packages display
   - Test redeem modal functionality
   - Test redeem management interface
@@ -147,21 +147,21 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
 
 ### Phase 5: Responsive Design & Mobile Optimization
 
-- [~] 17. Implement responsive design untuk mobile/tablet
+- [ ] 17. Implement responsive design untuk mobile/tablet
   - Optimize table display untuk mobile (horizontal scroll atau card view)
   - Implement touch-friendly buttons dan inputs
   - Test pada berbagai screen sizes (320px, 768px, 1024px, 1440px)
   - Ensure all functionality accessible pada mobile
   - _Requirements: 17 (Kompatibilitas Perangkat)_
 
-- [~] 18. Create mobile-specific components
+- [ ] 18. Create mobile-specific components
   - Build mobile navigation drawer
   - Create mobile-optimized forms
   - Implement mobile-friendly modals
   - Test touch interactions
   - _Requirements: 17 (Kompatibilitas Perangkat)_
 
-- [~] 19. Checkpoint - Verify responsive design
+- [ ] 19. Checkpoint - Verify responsive design
   - Test all components pada mobile
   - Test all components pada tablet
   - Test all components pada desktop
@@ -171,28 +171,28 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
 
 ### Phase 6: UI Polish & Documentation
 
-- [~] 20. Create in-app help system
+- [ ] 20. Create in-app help system
   - Implement tooltips untuk buttons dan fields
   - Create help modal dengan step-by-step guides
   - Implement contextual help messages
   - Create onboarding tutorial untuk new admins
   - _Requirements: 20 (Dokumentasi dan Panduan Pengguna)_
 
-- [~] 21. Implement UI theme dan styling
+- [ ] 21. Implement UI theme dan styling
   - Create consistent color scheme
   - Implement dark mode support (optional)
   - Create reusable component library
   - Implement consistent spacing dan typography
   - _Requirements: 14 (Antarmuka Admin)_
 
-- [~] 22. Create UI documentation
+- [ ] 22. Create UI documentation
   - Document component library
   - Create Storybook atau component showcase
   - Document design system
   - Create usage examples
   - _Requirements: 20 (Dokumentasi dan Panduan Pengguna)_
 
-- [~] 23. Checkpoint - Verify UI polish
+- [ ] 23. Checkpoint - Verify UI polish
   - Test all components styling
   - Test theme consistency
   - Test help system
@@ -202,28 +202,28 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
 
 ### Phase 7: Mock Data & State Management
 
-- [~] 24. Create mock data service
+- [ ] 24. Create mock data service
   - Create mock participants data
   - Create mock transactions data
   - Create mock quiz data
   - Create mock redeem data
   - _Requirements: 1, 2, 3, 4, 6, 8_
 
-- [~] 25. Implement state management (Context API atau Redux)
+- [ ] 25. Implement state management (Context API atau Redux)
   - Setup global state untuk participants
   - Setup global state untuk points
   - Setup global state untuk transactions
   - Setup global state untuk UI state
   - _Requirements: 1, 2, 3, 4_
 
-- [~] 26. Create custom hooks untuk data management
+- [ ] 26. Create custom hooks untuk data management
   - Create useParticipants hook
   - Create usePoints hook
   - Create useTransactions hook
   - Create useRedeem hook
   - _Requirements: 1, 2, 3, 4_
 
-- [~] 27. Checkpoint - Verify state management
+- [ ] 27. Checkpoint - Verify state management
   - Test state updates
   - Test data flow
   - Test component re-renders
@@ -233,7 +233,7 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
 
 ### Phase 8: Frontend Testing
 
-- [~] 28. Write React component tests
+- [ ] 28. Write React component tests
   - Test dashboard table rendering
   - Test quick-action buttons
   - Test redeem UI dengan various states
@@ -241,21 +241,21 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
   - Test responsive design
   - _Requirements: 1, 14, 17_
 
-- [~] 29. Write integration tests untuk UI flows
+- [ ] 29. Write integration tests untuk UI flows
   - Test complete attendance recording flow
   - Test complete redeem flow
   - Test complete quiz flow
   - Test dashboard updates
   - _Requirements: 1, 2, 3, 4, 8, 9_
 
-- [~] 30. Write end-to-end tests
+- [ ] 30. Write end-to-end tests
   - Test complete user journey
   - Test all UI interactions
   - Test responsive design pada different devices
   - Test error handling
   - _Requirements: 1, 2, 3, 4, 8, 9_
 
-- [~] 31. Checkpoint - Ensure all tests pass
+- [ ] 31. Checkpoint - Ensure all tests pass
   - Run full test suite
   - Verify code coverage
   - Fix any failing tests
@@ -265,14 +265,14 @@ Implementasi website gamifikasi challenge adzan menggunakan TypeScript + React +
 
 ### Phase 9: Frontend Deployment & Documentation
 
-- [~] 32. Setup frontend build dan deployment
+- [ ] 32. Setup frontend build dan deployment
   - Configure build process
   - Setup environment-based configuration
   - Create deployment scripts
   - Setup CI/CD untuk frontend
   - _Requirements: 17 (Kompatibilitas Perangkat)_
 
-- [~] 33. Create frontend documentation
+- [ ] 33. Create frontend documentation
   - Create admin quick-start guide
   - Create step-by-step guides untuk common tasks
   - Create FAQ section
