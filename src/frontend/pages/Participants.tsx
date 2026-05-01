@@ -12,7 +12,7 @@ const statusLabels: Record<ParticipantStatus, string> = { aktif: 'Aktif', tidak_
 const statusVariants: Record<ParticipantStatus, 'active' | 'inactive' | 'new'> = { aktif: 'active', tidak_aktif: 'inactive', baru: 'new' };
 
 export const Participants: React.FC = () => {
-  const { participants, points, addParticipant, updateParticipantStatus, recordAttendance, recordAdzan } = useApp();
+  const { participants, points, addParticipant, updateParticipantStatus, recordAttendance, recordAdzan, uploadAvatar, updateParticipantAvatar } = useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const [multiModal, setMultiModal] = useState(false);
   const [multiType, setMultiType] = useState<'attendance' | 'adzan'>('attendance');
@@ -120,7 +120,13 @@ export const Participants: React.FC = () => {
                       <td className="px-6 py-4 text-gray-500">{i + 1}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-sm flex-shrink-0">{p.nama.charAt(0)}</div>
+                          <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-sm flex-shrink-0 overflow-hidden border border-gray-100">
+                            {p.avatar_url ? (
+                              <img src={p.avatar_url} alt={p.nama} className="w-full h-full object-cover" />
+                            ) : (
+                              p.nama.charAt(0)
+                            )}
+                          </div>
                           <div>
                             <button onClick={() => setDetailModal(p)} className="font-semibold text-gray-900 hover:text-primary-600 transition-colors text-left">{p.nama}</button>
                             <p className="text-xs text-gray-400">ID: {p.id}</p>
@@ -262,14 +268,46 @@ export const Participants: React.FC = () => {
           footer={<Button variant="ghost" onClick={() => setDetailModal(null)} className="w-full sm:w-auto">Tutup</Button>}
         >
           <div className="space-y-6">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-2xl">{detailModal.nama.charAt(0)}</div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-900 font-heading">{detailModal.nama}</h3>
-                <Badge variant={statusVariants[detailModal.status]}>{statusLabels[detailModal.status]}</Badge>
+            <div className="flex flex-col sm:flex-row items-center gap-6 p-4 bg-gray-50 rounded-3xl border border-gray-100">
+              <div className="relative group">
+                <div className="w-24 h-24 rounded-3xl bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-4xl overflow-hidden shadow-inner border-2 border-white">
+                  {detailModal.avatar_url ? (
+                    <img src={detailModal.avatar_url} alt={detailModal.nama} className="w-full h-full object-cover" />
+                  ) : (
+                    detailModal.nama.charAt(0)
+                  )}
+                </div>
+                <label className="absolute -bottom-2 -right-2 p-2 bg-white rounded-xl shadow-lg border border-gray-100 cursor-pointer hover:bg-primary-50 transition-colors group-hover:scale-110">
+                  <Input 
+                    type="file" 
+                    className="hidden" 
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        try {
+                          const url = await uploadAvatar(file, detailModal.id);
+                          await updateParticipantAvatar(detailModal.id, url);
+                          setDetailModal(prev => prev ? { ...prev, avatar_url: url } : null);
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }
+                    }}
+                  />
+                  <Users className="w-4 h-4 text-primary-600" />
+                </label>
+              </div>
+              <div className="text-center sm:text-left flex-1">
+                <h3 className="text-2xl font-black text-gray-900 font-heading mb-1">{detailModal.nama}</h3>
+                <div className="flex flex-wrap justify-center sm:justify-start gap-2">
+                  <Badge variant={statusVariants[detailModal.status]}>{statusLabels[detailModal.status]}</Badge>
+                  <span className="text-xs text-gray-400 flex items-center gap-1 font-mono">ID: {detailModal.id}</span>
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {[
                 { label: 'Total Poin', value: `${points[detailModal.id]?.total ?? 0} pts`, color: 'text-primary-600' },
                 { label: 'Jumlah Adzan', value: `${points[detailModal.id]?.adzanCount ?? 0}×`, color: 'text-gray-900' },
@@ -278,9 +316,9 @@ export const Participants: React.FC = () => {
                 { label: 'Poin Adzan', value: `${points[detailModal.id]?.adzan ?? 0} pts`, color: 'text-emerald-600' },
                 { label: 'Poin Quiz', value: `${points[detailModal.id]?.quiz ?? 0} pts`, color: 'text-indigo-600' },
               ].map(item => (
-                <div key={item.label} className="bg-gray-50 rounded-xl p-3">
-                  <p className="text-xs text-gray-500 mb-1">{item.label}</p>
-                  <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
+                <div key={item.label} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{item.label}</p>
+                  <p className={`text-xl font-black ${item.color}`}>{item.value}</p>
                 </div>
               ))}
             </div>

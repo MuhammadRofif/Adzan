@@ -5,6 +5,8 @@ import { cn } from '../../utils/cn';
 export const BocilRedeem: React.FC = () => {
   const { participants, points, redeemPackages, redeemHistory, requestRedeem } = useApp();
   const [selectedParticipant, setSelectedParticipant] = useState(() => localStorage.getItem('bocil_id') || '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmPkg, setConfirmPkg] = useState<RedeemPackage | null>(null);
   const [successPopup, setSuccessPopup] = useState<string | null>(null);
   const [errorPopup, setErrorPopup] = useState<string | null>(null);
 
@@ -17,21 +19,31 @@ export const BocilRedeem: React.FC = () => {
   const participantPts = selectedParticipant ? (points[selectedParticipant]?.total ?? 0) : 0;
   const participantName = activeParticipants.find(p => p.id === selectedParticipant)?.nama;
 
-  const handleRedeem = (packageId: string) => {
-    if (!selectedParticipant) return;
-    const res = requestRedeem(selectedParticipant, packageId);
-    if (res.success) {
-      setSuccessPopup(res.message);
-      setTimeout(() => setSuccessPopup(null), 3000);
-    } else {
-      setErrorPopup(res.message);
+  const handleRedeem = async (packageId: string) => {
+    if (!selectedParticipant || isSubmitting) return;
+    
+    setIsSubmitting(true);
+    setConfirmPkg(null);
+    try {
+      const res = await requestRedeem(selectedParticipant, packageId);
+      if (res.success) {
+        setSuccessPopup(res.message);
+        setTimeout(() => setSuccessPopup(null), 3000);
+      } else {
+        setErrorPopup(res.message);
+        setTimeout(() => setErrorPopup(null), 3000);
+      }
+    } catch (err) {
+      setErrorPopup("Terjadi kesalahan sistem.");
       setTimeout(() => setErrorPopup(null), 3000);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Recent redeems for display
   const myRedeems = selectedParticipant
-    ? redeemHistory.filter(r => r.participantId === selectedParticipant).slice(0, 5)
+    ? redeemHistory.filter(r => String(r.participantId) === String(selectedParticipant)).slice(0, 5)
     : [];
 
   return (
@@ -101,8 +113,8 @@ export const BocilRedeem: React.FC = () => {
 
               {selectedParticipant ? (
                 <button
-                  onClick={() => handleRedeem(pkg.id)}
-                  disabled={!pkg.isAvailable || !canAfford}
+                  onClick={() => setConfirmPkg(pkg)}
+                  disabled={!pkg.isAvailable || !canAfford || isSubmitting}
                   className={cn(
                     'w-full py-3 rounded-xl font-bold text-sm transition-all duration-200',
                     pkg.isAvailable && canAfford
@@ -148,6 +160,42 @@ export const BocilRedeem: React.FC = () => {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmPkg && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => !isSubmitting && setConfirmPkg(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl p-6 sm:p-8 max-w-sm w-full animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-6">
+              <div className="text-5xl mb-4">🤔</div>
+              <h3 className="text-xl font-bold text-gray-900 font-heading mb-2">Konfirmasi Tukar</h3>
+              <p className="text-gray-500 text-sm">
+                Kamu akan menukar <span className="font-bold text-primary-600">{confirmPkg.pointsRequired} poin</span> untuk <span className="font-bold text-indigo-600">{confirmPkg.diamond} Diamond</span>. Yakin?
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setConfirmPkg(null)} 
+                disabled={isSubmitting}
+                className="bocil-btn-secondary flex-1"
+              >
+                Batal
+              </button>
+              <button 
+                onClick={() => handleRedeem(confirmPkg.id)} 
+                disabled={isSubmitting}
+                className="bocil-btn-primary flex-1 flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Proses...
+                  </>
+                ) : 'Ya, Tukar! 🚀'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -29,6 +29,8 @@ interface AppContextType {
   participants: Participant[];
   addParticipant: (nama: string) => void;
   updateParticipantStatus: (id: string, status: ParticipantStatus) => void;
+  updateParticipantAvatar: (id: string, url: string) => Promise<void>;
+  uploadAvatar: (file: File, participantId: string) => Promise<string>;
 
   // Points
   points: Record<string, PointValue>;
@@ -180,6 +182,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         id: p.id,
         nama: p.nama,
         status: p.status,
+        avatar_url: p.avatar_url,
         createdAt: new Date(p.created_at),
         updatedAt: new Date(p.updated_at)
       }));
@@ -541,11 +544,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       const earnedPoints = correct;
 
       const today = new Date().toISOString().split("T")[0];
+      
+      // Logic: Points only once per day for each specific quiz
       const alreadyEarnedToday = quizAttempts.some(
         (a) =>
           String(a.participantId) === String(participantId) &&
+          String(a.quizId) === String(quizId) &&
           new Date(a.completedAt).toISOString().split("T")[0] === today &&
-          a.earnedPoints > 0,
+          a.earnedPoints > 0
       );
 
       const finalEarnedPoints = alreadyEarnedToday ? 0 : earnedPoints;
@@ -573,7 +579,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
           adminId: "system",
         });
       } else if (earnedPoints > 0 && alreadyEarnedToday) {
-        showToast("Poin quiz hanya bisa didapat sekali sehari.", "info");
+        showToast("Poin untuk kuis ini sudah diambil hari ini. Coba lagi besok!", "info");
       }
 
       loadAllData();
@@ -614,6 +620,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     },
     [showToast, loadAllData],
   );
+
+  const uploadAvatar = useCallback(async (file: File, participantId: string) => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${participantId}-${Math.random()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('media')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('media')
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    } catch (error) {
+      showToast("Gagal mengupload foto", "error");
+      throw error;
+    }
+  }, [showToast]);
+
+  const updateParticipantAvatar = useCallback(async (id: string, url: string) => {
+    const { error } = await supabase.from("participants").update({ avatar_url: url }).eq("id", id);
+    if (error) {
+      showToast("Gagal memperbarui foto profil", "error");
+    } else {
+      showToast("Foto profil berhasil diperbarui", "success");
+      loadAllData();
+    }
+  }, [showToast, loadAllData]);
 
   const seedDatabase = useCallback(async () => {
     setIsLoading(true);
@@ -702,6 +741,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         quickAbsen,
         setQuickAbsen,
         seedDatabase,
+        uploadAvatar,
+        updateParticipantAvatar,
       }}
     >
       {children}

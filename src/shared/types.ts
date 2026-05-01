@@ -6,6 +6,7 @@ export interface Participant {
   id: string;
   nama: string;
   status: ParticipantStatus;
+  avatar_url?: string;
   createdAt: Date;
   updatedAt: Date;
 }

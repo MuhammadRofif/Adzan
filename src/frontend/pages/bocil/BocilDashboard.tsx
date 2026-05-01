@@ -129,8 +129,12 @@ export const BocilDashboard: React.FC = () => {
             {selectedUser && myStats && myPangkat ? (
               <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl p-6 text-white min-w-[320px]">
                 <div className="flex items-start gap-4 mb-4">
-                  <div className={cn('w-16 h-16 rounded-2xl flex items-center justify-center text-4xl shadow-xl bg-gradient-to-br shrink-0 border-2 border-white/30', myPangkat.color)}>
-                    {myInfo?.nama.charAt(0)}
+                  <div className={cn('w-16 h-16 rounded-2xl flex items-center justify-center text-4xl shadow-xl bg-gradient-to-br shrink-0 border-2 border-white/30 overflow-hidden', myPangkat?.color || 'from-gray-400 to-gray-500')}>
+                    {myInfo?.avatar_url ? (
+                      <img src={myInfo.avatar_url} alt={myInfo.nama} className="w-full h-full object-cover" />
+                    ) : (
+                      myInfo?.nama.charAt(0)
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="bg-white/20 px-3 py-1 rounded-xl border border-white/20 inline-block mb-2 shadow-sm">
@@ -138,8 +142,8 @@ export const BocilDashboard: React.FC = () => {
                     </div>
                     <div className="space-y-0.5">
                       <p className="text-[10px] font-black uppercase tracking-widest text-primary-200">Pangkat Kamu</p>
-                      <p className="text-xl font-black font-heading leading-tight">{myPangkat.emoji} {myPangkat.title}</p>
-                      <p className="text-xs font-bold text-yellow-300">✨ {myStats.total} Total Poin</p>
+                      <p className="text-xl font-black font-heading leading-tight">{myPangkat?.emoji || '🪖'} {myPangkat?.title || 'Prajurit Masjid'}</p>
+                      <p className="text-xs font-bold text-yellow-300">✨ {myStats?.total || 0} Total Poin</p>
                     </div>
                   </div>
                   <button onClick={() => setSelectedUser(null)} className="p-2 hover:bg-white/20 rounded-xl transition-colors shrink-0 group">
@@ -206,8 +210,12 @@ export const BocilDashboard: React.FC = () => {
                 {/* 2nd Place */}
                 {leaderboard.length >= 2 && (
                   <div onClick={() => setViewParticipant(leaderboard[1])} className={cn("bocil-podium-item animate-fade-in cursor-pointer group", selectedUser === leaderboard[1].id && "scale-110 z-20")} style={{ animationDelay: '0.2s' }}>
-                    <div className={cn("bocil-avatar bg-gradient-to-br from-gray-300 to-gray-400 text-xl sm:text-2xl w-14 h-14 sm:w-16 sm:h-16 group-hover:scale-110 transition-transform relative", selectedUser === leaderboard[1].id && "ring-4 ring-pink-400 shadow-[0_0_25px_rgba(236,72,153,0.4)]")}>
-                      {leaderboard[1].nama.charAt(0)}
+                    <div className={cn("bocil-avatar bg-gradient-to-br from-gray-300 to-gray-400 text-xl sm:text-2xl w-14 h-14 sm:w-16 sm:h-16 group-hover:scale-110 transition-transform relative overflow-hidden", selectedUser === leaderboard[1].id && "ring-4 ring-pink-400 shadow-[0_0_25px_rgba(236,72,153,0.4)]")}>
+                      {leaderboard[1].avatar_url ? (
+                        <img src={leaderboard[1].avatar_url} alt={leaderboard[1].nama} className="w-full h-full object-cover" />
+                      ) : (
+                        leaderboard[1].nama.charAt(0)
+                      )}
                       {selectedUser === leaderboard[1].id && <div className="absolute -top-3 -right-3 animate-bounce bg-pink-500 text-[9px] font-black px-2 py-1 rounded-full text-white ring-2 ring-white shadow-md whitespace-nowrap">🌟 AKU!</div>}
                     </div>
                     <Medal rank={1} />
@@ -221,8 +229,12 @@ export const BocilDashboard: React.FC = () => {
 
                 {/* 1st Place */}
                 <div onClick={() => setViewParticipant(leaderboard[0])} className={cn("bocil-podium-item animate-fade-in cursor-pointer group", selectedUser === leaderboard[0].id && "scale-110 z-20")} style={{ animationDelay: '0.1s' }}>
-                  <div className={cn("bocil-avatar bg-gradient-to-br from-yellow-400 to-amber-500 text-2xl sm:text-3xl w-16 h-16 sm:w-20 sm:h-20 shadow-lg shadow-yellow-300/50 group-hover:scale-110 transition-transform relative", selectedUser === leaderboard[0].id ? "ring-4 ring-pink-400" : "ring-4 ring-yellow-200")}>
-                    {leaderboard[0].nama.charAt(0)}
+                  <div className={cn("bocil-avatar bg-gradient-to-br from-yellow-400 to-amber-500 text-2xl sm:text-3xl w-16 h-16 sm:w-20 sm:h-20 shadow-lg shadow-yellow-300/50 group-hover:scale-110 transition-transform relative overflow-hidden", selectedUser === leaderboard[0].id ? "ring-4 ring-pink-400" : "ring-4 ring-yellow-200")}>
+                    {leaderboard[0].avatar_url ? (
+                      <img src={leaderboard[0].avatar_url} alt={leaderboard[0].nama} className="w-full h-full object-cover" />
+                    ) : (
+                      leaderboard[0].nama.charAt(0)
+                    )}
                     {selectedUser === leaderboard[0].id && <div className="absolute -top-4 -right-4 animate-bounce bg-pink-500 text-[11px] font-black px-2.5 py-1.5 rounded-full text-white ring-2 ring-white shadow-lg whitespace-nowrap">👑 JAGOAN!</div>}
                   </div>
                   <Medal rank={0} />
@@ -236,8 +248,12 @@ export const BocilDashboard: React.FC = () => {
                 {/* 3rd Place */}
                 {leaderboard.length >= 3 && (
                   <div onClick={() => setViewParticipant(leaderboard[2])} className={cn("bocil-podium-item animate-fade-in cursor-pointer group", selectedUser === leaderboard[2].id && "scale-110 z-20")} style={{ animationDelay: '0.3s' }}>
-                    <div className={cn("bocil-avatar bg-gradient-to-br from-orange-300 to-orange-400 text-xl sm:text-2xl w-14 h-14 sm:w-16 sm:h-16 group-hover:scale-110 transition-transform relative", selectedUser === leaderboard[2].id && "ring-4 ring-pink-400 shadow-[0_0_25px_rgba(236,72,153,0.4)]")}>
-                      {leaderboard[2].nama.charAt(0)}
+                    <div className={cn("bocil-avatar bg-gradient-to-br from-orange-300 to-orange-400 text-xl sm:text-2xl w-14 h-14 sm:w-16 sm:h-16 group-hover:scale-110 transition-transform relative overflow-hidden", selectedUser === leaderboard[2].id && "ring-4 ring-pink-400 shadow-[0_0_25px_rgba(236,72,153,0.4)]")}>
+                      {leaderboard[2].avatar_url ? (
+                        <img src={leaderboard[2].avatar_url} alt={leaderboard[2].nama} className="w-full h-full object-cover" />
+                      ) : (
+                        leaderboard[2].nama.charAt(0)
+                      )}
                       {selectedUser === leaderboard[2].id && <div className="absolute -top-3 -right-3 animate-bounce bg-pink-500 text-[9px] font-black px-2 py-1 rounded-full text-white ring-2 ring-white shadow-md whitespace-nowrap">🌟 AKU!</div>}
                     </div>
                     <Medal rank={2} />
@@ -260,7 +276,13 @@ export const BocilDashboard: React.FC = () => {
                   <div key={p.id} onClick={() => setViewParticipant(p)} className={cn("bocil-leaderboard-row animate-fade-in cursor-pointer group hover:bg-primary-50 transition-all", selectedUser === p.id && "bg-gradient-to-r from-pink-50 to-white border-pink-200 ring-2 ring-pink-100 shadow-[0_0_15px_rgba(236,72,153,0.15)]")} style={{ animationDelay: `${(i + 4) * 0.05}s` }}>
                     <div className="flex items-center gap-3">
                       <span className={cn("w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold", selectedUser === p.id ? "bg-pink-500 text-white animate-pulse" : "bg-gray-100 text-gray-500")}>{i + 1 + rankOffset}</span>
-                      <div className={cn("bocil-avatar-sm group-hover:scale-110 transition-transform", selectedUser === p.id ? "bg-gradient-to-br from-pink-400 to-rose-400 shadow-md" : "bg-gradient-to-br from-primary-400 to-teal-400")}>{p.nama.charAt(0)}</div>
+                      <div className={cn("bocil-avatar-sm group-hover:scale-110 transition-transform overflow-hidden", selectedUser === p.id ? "bg-gradient-to-br from-pink-400 to-rose-400 shadow-md" : "bg-gradient-to-br from-primary-400 to-teal-400")}>
+                        {p.avatar_url ? (
+                          <img src={p.avatar_url} alt={p.nama} className="w-full h-full object-cover" />
+                        ) : (
+                          p.nama.charAt(0)
+                        )}
+                      </div>
                       <div className="min-w-0">
                         <p className={cn("font-bold text-sm transition-colors truncate", selectedUser === p.id ? "text-pink-600" : "text-gray-800 group-hover:text-primary-600")}>{p.nama} {selectedUser === p.id && <span className="ml-1 text-[9px] bg-pink-500 text-white px-2 py-0.5 rounded-full font-black italic shadow-sm animate-bounce inline-block">🌟 AKU DISINI!</span>}</p>
                         <p className="text-[10px] font-bold text-gray-400 flex items-center gap-1">{current.emoji} {current.title}</p>

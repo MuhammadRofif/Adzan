@@ -176,81 +176,234 @@ export const BocilQuiz: React.FC = () => {
     );
   }
 
-  return (
-    <div className="bocil-page">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 font-heading mb-2">
-          📖 Quiz Keislaman
-        </h1>
-        <p className="text-gray-500 text-base sm:text-lg">Uji pengetahuan kamu dan dapatkan poin tambahan!</p>
-      </div>
+    const today = new Date().toISOString().split("T")[0];
+    
+    const hasAttemptedToday = (quizId: string) =>
+      quizAttempts.some(a => 
+        String(a.quizId) === String(quizId) && 
+        String(a.participantId) === String(selectedParticipant) &&
+        new Date(a.completedAt).toISOString().split("T")[0] === today &&
+        a.earnedPoints > 0
+      );
 
-      {/* Select participant */}
-      <div className="max-w-md mx-auto mb-8">
-        <label className="block text-sm font-bold text-gray-700 mb-2">👤 Pilih Nama Kamu:</label>
-        <select
-          value={selectedParticipant}
-          onChange={e => setSelectedParticipant(e.target.value)}
-          className="bocil-select"
-        >
-          <option value="">Pilih nama...</option>
-          {activeParticipants.map(p => (
-            <option key={p.id} value={p.id}>{p.nama}</option>
-          ))}
-        </select>
-      </div>
+    const getBestScore = (quizId: string) => {
+      const myAttempts = quizAttempts.filter(a => String(a.quizId) === String(quizId) && String(a.participantId) === String(selectedParticipant));
+      if (myAttempts.length === 0) return null;
+      return Math.max(...myAttempts.map(a => a.score));
+    };
 
-      {/* Quiz Cards */}
-      {activeQuizzes.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="text-6xl mb-4">📭</div>
-          <h3 className="text-xl font-bold text-gray-700 mb-2">Belum ada quiz aktif</h3>
-          <p className="text-gray-400">Tunggu admin membuat quiz baru ya!</p>
+    return (
+      <div className="bocil-page">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 font-heading mb-2">
+            📖 Quiz Keislaman
+          </h1>
+          <p className="text-gray-500 text-base sm:text-lg">Dapatkan poin baru setiap hari! ✨</p>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {activeQuizzes.map((quiz, i) => {
-            const avg = getAvgScore(quiz.id);
-            const attempts = getAttemptCount(quiz.id);
-            return (
-              <div key={quiz.id} className="bocil-quiz-card animate-fade-in" style={{ animationDelay: `${i * 0.1}s` }}>
-                <div className="text-4xl mb-3">
-                  {i === 0 ? '🕌' : i === 1 ? '📿' : '📚'}
-                </div>
-                <h3 className="font-bold text-gray-900 font-heading text-lg mb-1">{quiz.title}</h3>
-                <p className="text-sm text-gray-500 mb-4 line-clamp-2">{quiz.description}</p>
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  <div className="bg-gray-50 rounded-xl py-2 text-center">
-                    <p className="text-base font-extrabold text-gray-800">{quiz.questions.length}</p>
-                    <p className="text-[10px] text-gray-500">Soal</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl py-2 text-center">
-                    <p className="text-base font-extrabold text-gray-800">{attempts}</p>
-                    <p className="text-[10px] text-gray-500">Dimainkan</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl py-2 text-center">
-                    <p className="text-base font-extrabold text-gray-800">{avg !== null ? `${avg}%` : '-'}</p>
-                    <p className="text-[10px] text-gray-500">Rata-rata</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => { setSelectedQuiz(quiz); if (selectedParticipant) startQuiz(); }}
-                  disabled={!selectedParticipant}
-                  className={cn(
-                    'w-full py-3 rounded-xl font-bold text-sm transition-all duration-200',
-                    selectedParticipant
-                      ? 'bocil-btn-primary'
-                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+  
+        {/* Select participant */}
+        <div className="max-w-md mx-auto mb-8">
+          <label className="block text-sm font-bold text-gray-700 mb-2">👤 Pilih Nama Kamu:</label>
+          <select
+            value={selectedParticipant}
+            onChange={e => setSelectedParticipant(e.target.value)}
+            className="bocil-select"
+          >
+            <option value="">Pilih nama...</option>
+            {activeParticipants.map(p => (
+              <option key={p.id} value={p.id}>{p.nama}</option>
+            ))}
+          </select>
+        </div>
+  
+        {/* Quiz Cards */}
+        {activeQuizzes.length === 0 ? (
+          <div className="text-center py-16">
+            <div className="text-6xl mb-4">📭</div>
+            <h3 className="text-xl font-bold text-gray-700 mb-2">Belum ada quiz aktif</h3>
+            <p className="text-gray-400">Tunggu admin membuat quiz baru ya!</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {activeQuizzes.map((quiz, i) => {
+              const avg = getAvgScore(quiz.id);
+              const totalAttempts = getAttemptCount(quiz.id);
+              const doneToday = hasAttemptedToday(quiz.id);
+              const best = getBestScore(quiz.id);
+              const myTotalTries = quizAttempts.filter(a => String(a.quizId) === String(quiz.id) && String(a.participantId) === String(selectedParticipant)).length;
+              
+              let medal = null;
+              if (best !== null) {
+                if (best === 100) medal = { icon: '🥇', label: 'Sempurna!' };
+                else if (best >= 80) medal = { icon: '🥈', label: 'Hebat!' };
+                else if (best >= 60) medal = { icon: '🥉', label: 'Bagus!' };
+              }
+  
+              return (
+                <div key={quiz.id} className="bocil-quiz-card animate-fade-in relative overflow-hidden" style={{ animationDelay: `${i * 0.1}s` }}>
+                  {medal && (
+                    <div className="absolute -top-1 -right-1 bg-white shadow-md rounded-bl-2xl p-2 px-3 flex flex-col items-center border-b border-l border-gray-100 z-10">
+                      <span className="text-2xl">{medal.icon}</span>
+                      <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">{medal.label}</span>
+                    </div>
                   )}
-                >
-                  {selectedParticipant ? 'Mulai Quiz 🚀' : 'Pilih nama dulu 👆'}
-                </button>
+
+                  <div className="text-4xl mb-3">
+                    {i === 0 ? '🕌' : i === 1 ? '📿' : '📚'}
+                  </div>
+                  <div className="flex items-start justify-between mb-1">
+                    <h3 className="font-bold text-gray-900 font-heading text-lg leading-tight">{quiz.title}</h3>
+                    {selectedParticipant && myTotalTries > 0 && (
+                      <span className="text-[9px] font-black bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full whitespace-nowrap">
+                        {myTotalTries}x PERCOBAAN
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-500 mb-4 line-clamp-2">{quiz.description}</p>
+                  <div className="grid grid-cols-3 gap-2 mb-4">
+                    <div className="bg-gray-50 rounded-xl py-2 text-center">
+                      <p className="text-base font-extrabold text-gray-800">{quiz.questions.length}</p>
+                      <p className="text-[10px] text-gray-500">Soal</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl py-2 text-center">
+                      <p className="text-base font-extrabold text-gray-800">{totalAttempts}</p>
+                      <p className="text-[10px] text-gray-500">Dimainkan</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl py-2 text-center">
+                      <p className="text-base font-extrabold text-gray-800">{avg !== null ? `${avg}%` : '-'}</p>
+                      <p className="text-[10px] text-gray-500">Rata-rata</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setSelectedQuiz(quiz); if (selectedParticipant) startQuiz(); }}
+                    disabled={!selectedParticipant}
+                    className={cn(
+                      'w-full py-3 rounded-xl font-bold text-sm transition-all duration-200',
+                      !selectedParticipant 
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : doneToday
+                          ? 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100'
+                          : 'bocil-btn-primary'
+                    )}
+                  >
+                    {!selectedParticipant 
+                      ? 'Pilih nama dulu 👆' 
+                      : doneToday 
+                        ? 'Sudah Selesai Hari Ini ✅' 
+                        : 'Mulai Quiz 🚀'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+      {/* Daily Leaderboard - Battle Arena Style */}
+      <div className="mt-16 mb-12">
+        <div className="bg-slate-900 rounded-[40px] p-8 relative overflow-hidden shadow-2xl border-4 border-red-500/30">
+          {/* Background effects */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-red-600/10 rounded-full -mr-32 -mt-32 blur-3xl animate-pulse" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-orange-600/10 rounded-full -ml-24 -mb-24 blur-3xl animate-pulse" />
+          
+          <div className="relative z-10">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-10">
+              <div className="text-center md:text-left">
+                <h2 className="text-2xl sm:text-3xl font-black text-white font-heading flex items-center justify-center md:justify-start gap-3 italic tracking-tighter">
+                  <span className="text-red-500 animate-bounce">⚔️</span> 
+                  ARENA PEJUANG KUIS
+                  <span className="text-red-500 animate-bounce">⚔️</span>
+                </h2>
+                <p className="text-gray-400 font-bold text-xs uppercase tracking-[0.2em] mt-1">Siapa yang paling tangguh hari ini?</p>
               </div>
-            );
-          })}
+              <div className="flex items-center gap-2">
+                <div className="bg-red-600 text-white text-[10px] font-black px-4 py-2 rounded-xl shadow-[0_0_15px_rgba(220,38,38,0.5)] animate-pulse">
+                   LIVE BATTLE 🔥
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+              {participants
+                .filter(p => p.status === 'aktif')
+                .map(p => {
+                  const todayAttempts = quizAttempts.filter(a => 
+                    String(a.participantId) === String(p.id) && 
+                    new Date(a.completedAt).toISOString().split("T")[0] === today
+                  );
+                  const todayPts = todayAttempts.reduce((sum, a) => sum + a.earnedPoints, 0);
+                  const maxScore = todayAttempts.length > 0 ? Math.max(...todayAttempts.map(a => a.score)) : 0;
+                  const powerLevel = todayAttempts.length;
+                  return { ...p, todayPts, maxScore, powerLevel };
+                })
+                .filter(p => p.powerLevel > 0)
+                .sort((a, b) => b.powerLevel - a.powerLevel || b.maxScore - a.maxScore)
+                .slice(0, 4)
+                .map((p, idx) => (
+                  <div key={p.id} className={cn(
+                    "group relative bg-white/5 backdrop-blur-sm border-2 p-5 rounded-[32px] transition-all hover:-translate-y-2 duration-300 flex flex-col items-center text-center",
+                    idx === 0 ? "border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.2)] bg-yellow-500/5" : "border-white/10 hover:border-red-500/50"
+                  )}>
+                    {/* Rank Badge */}
+                    <div className={cn(
+                      "absolute -top-4 w-10 h-10 rounded-2xl flex items-center justify-center text-xl shadow-lg z-20",
+                      idx === 0 ? "bg-yellow-500 rotate-12" : idx === 1 ? "bg-slate-300 -rotate-12" : "bg-orange-600 rotate-6"
+                    )}>
+                      {idx === 0 ? '👑' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🛡️'}
+                    </div>
+
+                    {/* Avatar with Aura for #1 */}
+                    <div className="relative mb-4">
+                      {idx === 0 && (
+                        <div className="absolute inset-0 bg-yellow-400 rounded-full blur-xl animate-pulse scale-150 opacity-20" />
+                      )}
+                      <div className={cn(
+                        "w-20 h-20 rounded-3xl flex items-center justify-center text-3xl font-black text-white shadow-inner relative z-10 overflow-hidden",
+                        idx === 0 ? "bg-gradient-to-br from-yellow-400 to-amber-600" : "bg-gradient-to-br from-gray-700 to-gray-800"
+                      )}>
+                        {p.avatar_url ? (
+                          <img src={p.avatar_url} alt={p.nama} className="w-full h-full object-cover" />
+                        ) : (
+                          p.nama.charAt(0)
+                        )}
+                      </div>
+                    </div>
+
+                    <h4 className="font-black text-white text-lg mb-1 truncate w-full">{p.nama.split(' ')[0]}</h4>
+                    
+                    <div className="w-full space-y-3">
+                      {/* Kekuatan Display */}
+                      <div className="bg-red-600 rounded-2xl py-2 px-3 shadow-lg shadow-red-900/40 relative overflow-hidden">
+                         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-r from-white/0 via-white/10 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                         <p className="text-[10px] font-black text-red-100 uppercase tracking-tighter leading-none mb-1">Kekuatan Pejuang</p>
+                         <p className="text-xl font-black text-white leading-none">{p.powerLevel * 100}</p>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 px-1">
+                        <div className="flex flex-col items-start">
+                          <span className="text-[8px] font-bold text-gray-500 uppercase leading-none">Skor</span>
+                          <span className="text-xs font-black text-white">{p.maxScore}%</span>
+                        </div>
+                        <div className="h-4 w-px bg-white/10" />
+                        <div className="flex flex-col items-end">
+                          <span className="text-[8px] font-bold text-gray-500 uppercase leading-none">Percobaan</span>
+                          <span className="text-xs font-black text-red-400">{p.powerLevel}x</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              
+              {participants.filter(p => quizAttempts.some(a => String(a.participantId) === String(p.id) && new Date(a.completedAt).toISOString().split("T")[0] === today)).length === 0 && (
+                <div className="col-span-full py-16 text-center bg-white/5 rounded-[40px] border-2 border-dashed border-white/10">
+                  <span className="text-5xl block mb-4 animate-pulse">⚔️</span>
+                  <p className="text-white/40 font-black italic uppercase tracking-widest">Arena masih sepi... Jadilah petarung pertama! 🔥</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      )}
+      </div>
 
       {/* Recent Quiz Results */}
       {quizAttempts.length > 0 && (
@@ -294,7 +447,7 @@ export const BocilQuiz: React.FC = () => {
             </div>
             <div className="bg-primary-50 border border-primary-100 rounded-2xl p-4 text-center mb-6">
               <p className="text-sm text-primary-700 font-medium">
-                Bermain sebagai: <span className="font-bold">{activeParticipants.find(p => p.id === selectedParticipant)?.nama}</span>
+                Bermain sebagai: <span className="font-bold">{activeParticipants.find(p => String(p.id) === String(selectedParticipant))?.nama}</span>
               </p>
             </div>
             <div className="flex gap-3">
