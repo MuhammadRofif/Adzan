@@ -105,6 +105,7 @@ type PointValue = {
   total: number;
   adzanCount: number;
   attendanceCount: number;
+  quizCount: number;
 };
 
 type BudgetStatus = {
@@ -123,6 +124,7 @@ const emptyPointValue = (): PointValue => ({
   total: 0,
   adzanCount: 0,
   attendanceCount: 0,
+  quizCount: 0,
 });
 
 // ─── Context ──────────────────────────────────────────────────────────────────────
@@ -290,6 +292,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
 
       mappedAdzan.forEach((a: any) => {
         if (pointMap[a.participantId]) pointMap[a.participantId].adzanCount++;
+      });
+
+      mappedQuizAttempts.forEach((qa: any) => {
+        if (pointMap[qa.participantId]) pointMap[qa.participantId].quizCount++;
       });
 
       setPoints(pointMap);

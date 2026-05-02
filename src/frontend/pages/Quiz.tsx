@@ -20,9 +20,9 @@ const QuizPlayer: React.FC<{ quiz: Quiz; participantId: string; onDone: (score: 
     const a = [...answers]; a[step] = optIdx; setAnswers(a);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const finalAnswers = answers.map(a => a ?? 0);
-    const res = submitQuiz(participantId, quiz.id, finalAnswers);
+    const res = await submitQuiz(participantId, quiz.id, finalAnswers);
     setResult(res); setSubmitted(true); onDone(res.score, res.earnedPoints);
   };
 

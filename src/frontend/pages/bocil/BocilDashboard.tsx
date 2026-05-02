@@ -838,8 +838,8 @@ export const BocilDashboard: React.FC = () => {
                   bg: "bg-emerald-50",
                 },
                 {
-                  label: "Quiz",
-                  value: points[viewParticipant.id]?.quiz ?? 0,
+                  label: "Berapa Kali Jawab Quiz",
+                  value: `${points[viewParticipant.id]?.quizCount ?? 0}x`,
                   icon: BookOpen,
                   color: "text-purple-600",
                   bg: "bg-purple-50",

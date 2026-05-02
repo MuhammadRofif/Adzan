@@ -21,9 +21,9 @@ const BocilQuizPlayer: React.FC<{
     const a = [...answers]; a[step] = optIdx; setAnswers(a);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const finalAnswers = answers.map(a => a ?? 0);
-    const res = submitQuiz(participantId, quiz.id, finalAnswers);
+    const res = await submitQuiz(participantId, quiz.id, finalAnswers);
     setResult(res); setSubmitted(true); onDone(res.score, res.earnedPoints);
   };
 
@@ -301,7 +301,7 @@ export const BocilQuiz: React.FC = () => {
 
       {/* Daily Leaderboard - Battle Arena Style */}
       <div className="mt-16 mb-12">
-        <div className="bg-slate-900 rounded-[40px] p-8 relative overflow-hidden shadow-2xl border-4 border-red-500/30">
+        <div className="bg-slate-900 rounded-[32px] sm:rounded-[40px] p-4 sm:p-8 relative overflow-hidden shadow-2xl border-4 border-red-500/30">
           {/* Background effects */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-red-600/10 rounded-full -mr-32 -mt-32 blur-3xl animate-pulse" />
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-orange-600/10 rounded-full -ml-24 -mb-24 blur-3xl animate-pulse" />
@@ -341,7 +341,7 @@ export const BocilQuiz: React.FC = () => {
                 .slice(0, 4)
                 .map((p, idx) => (
                   <div key={p.id} className={cn(
-                    "group relative bg-white/5 backdrop-blur-sm border-2 p-5 rounded-[32px] transition-all hover:-translate-y-2 duration-300 flex flex-col items-center text-center",
+                    "group relative bg-white/5 backdrop-blur-sm border-2 p-3 sm:p-5 rounded-[24px] sm:rounded-[32px] transition-all hover:-translate-y-2 duration-300 flex flex-col items-center text-center",
                     idx === 0 ? "border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.2)] bg-yellow-500/5" : "border-white/10 hover:border-red-500/50"
                   )}>
                     {/* Rank Badge */}
@@ -375,8 +375,8 @@ export const BocilQuiz: React.FC = () => {
                       {/* Kekuatan Display */}
                       <div className="bg-red-600 rounded-2xl py-2 px-3 shadow-lg shadow-red-900/40 relative overflow-hidden">
                          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-r from-white/0 via-white/10 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-                         <p className="text-[10px] font-black text-red-100 uppercase tracking-tighter leading-none mb-1">Kekuatan Pejuang</p>
-                         <p className="text-xl font-black text-white leading-none">{p.powerLevel * 100}</p>
+                         <p className="text-[8px] sm:text-[10px] font-black text-red-100 uppercase tracking-tighter leading-none mb-1">Kekuatan Pejuang</p>
+                         <p className="text-lg sm:text-xl font-black text-white leading-none">{p.powerLevel * 100}</p>
                       </div>
 
                       <div className="flex items-center justify-between gap-2 px-1">

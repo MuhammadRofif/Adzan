@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { cn } from '../../utils/cn';
+import { RedeemPackage } from '../../../shared/types';
 
 export const BocilRedeem: React.FC = () => {
   const { participants, points, redeemPackages, redeemHistory, requestRedeem } = useApp();
