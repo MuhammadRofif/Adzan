@@ -17,16 +17,30 @@ export const Redeem: React.FC = () => {
   const [redeemError, setRedeemError] = useState('');
   const [processConfirm, setProcessConfirm] = useState<{ id: string; action: 'approved' | 'rejected' } | null>(null);
   const [filterSearch, setFilterSearch] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedPkg = redeemPackages.find(p => p.id === redeemModal);
   const participantPts = selectedParticipant ? (points[selectedParticipant]?.total ?? 0) : 0;
   const canAfford = selectedPkg ? participantPts >= selectedPkg.pointsRequired : false;
 
-  const handleRedeemSubmit = () => {
-    if (!redeemModal || !selectedParticipant) return;
-    const res = requestRedeem(selectedParticipant, redeemModal);
-    if (!res.success) { setRedeemError(res.message); return; }
-    setRedeemModal(null); setSelectedParticipant(''); setRedeemConfirm(false); setRedeemError('');
+  const handleRedeemSubmit = async () => {
+    if (!redeemModal || !selectedParticipant || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const res = await requestRedeem(selectedParticipant, redeemModal);
+      if (!res.success) { 
+        setRedeemError(res.message); 
+        return; 
+      }
+      setRedeemModal(null); 
+      setSelectedParticipant(''); 
+      setRedeemConfirm(false); 
+      setRedeemError('');
+    } catch (err) {
+      setRedeemError("Terjadi kesalahan sistem.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const pendingRequests = redeemHistory.filter(r => r.status === 'pending');
@@ -189,8 +203,10 @@ export const Redeem: React.FC = () => {
       {redeemModal && selectedPkg && (
         <Modal isOpen={!!redeemModal} onClose={() => { setRedeemModal(null); setSelectedParticipant(''); setRedeemError(''); }} title={`Redeem: ${selectedPkg.name}`}
           footer={<>
-            <Button onClick={handleRedeemSubmit} className="w-full sm:w-auto sm:ml-3" disabled={!selectedParticipant || !canAfford}>Konfirmasi Redeem</Button>
-            <Button variant="ghost" onClick={() => { setRedeemModal(null); setSelectedParticipant(''); setRedeemError(''); }} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
+            <Button onClick={handleRedeemSubmit} className="w-full sm:w-auto sm:ml-3" disabled={!selectedParticipant || !canAfford || isSubmitting}>
+              {isSubmitting ? 'Memproses...' : 'Konfirmasi Redeem'}
+            </Button>
+            <Button variant="ghost" onClick={() => { setRedeemModal(null); setSelectedParticipant(''); setRedeemError(''); }} className="mt-3 sm:mt-0 w-full sm:w-auto" disabled={isSubmitting}>Batal</Button>
           </>}
         >
           <div className="space-y-4">

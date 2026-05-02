@@ -16,15 +16,27 @@ const BocilQuizPlayer: React.FC<{
   const [result, setResult] = useState<{ score: number; earnedPoints: number } | null>(null);
   const [step, setStep] = useState(0);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleAnswer = (optIdx: number) => {
     if (submitted) return;
     const a = [...answers]; a[step] = optIdx; setAnswers(a);
   };
 
   const handleSubmit = async () => {
-    const finalAnswers = answers.map(a => a ?? 0);
-    const res = await submitQuiz(participantId, quiz.id, finalAnswers);
-    setResult(res); setSubmitted(true); onDone(res.score, res.earnedPoints);
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const finalAnswers = answers.map(a => a ?? 0);
+      const res = await submitQuiz(participantId, quiz.id, finalAnswers);
+      setResult(res); 
+      setSubmitted(true); 
+      onDone(res.score, res.earnedPoints);
+    } catch (error) {
+      console.error("Quiz submission error:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const allAnswered = answers.every(a => a !== null);
@@ -109,17 +121,17 @@ const BocilQuizPlayer: React.FC<{
       {/* Navigation */}
       <div className="flex gap-3">
         {step > 0 && (
-          <button onClick={() => setStep(s => s - 1)} className="bocil-btn-secondary flex-1">
+          <button onClick={() => setStep(s => s - 1)} className="bocil-btn-secondary flex-1" disabled={isSubmitting}>
             ⬅️ Sebelumnya
           </button>
         )}
         {step < quiz.questions.length - 1 ? (
-          <button onClick={() => setStep(s => s + 1)} className="bocil-btn-primary flex-1" disabled={answers[step] === null}>
+          <button onClick={() => setStep(s => s + 1)} className="bocil-btn-primary flex-1" disabled={answers[step] === null || isSubmitting}>
             Selanjutnya ➡️
           </button>
         ) : (
-          <button onClick={handleSubmit} className="bocil-btn-primary flex-1" disabled={!allAnswered}>
-            Kumpulkan! 🚀
+          <button onClick={handleSubmit} className="bocil-btn-primary flex-1" disabled={!allAnswered || isSubmitting}>
+            {isSubmitting ? 'Mengirim... 🚀' : 'Kumpulkan! 🚀'}
           </button>
         )}
       </div>
@@ -176,13 +188,13 @@ export const BocilQuiz: React.FC = () => {
     );
   }
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toLocaleDateString('en-CA');
     
     const hasAttemptedToday = (quizId: string) =>
       quizAttempts.some(a => 
         String(a.quizId) === String(quizId) && 
         String(a.participantId) === String(selectedParticipant) &&
-        new Date(a.completedAt).toISOString().split("T")[0] === today &&
+        new Date(a.completedAt).toLocaleDateString('en-CA') === today &&
         a.earnedPoints > 0
       );
 
@@ -329,7 +341,7 @@ export const BocilQuiz: React.FC = () => {
                 .map(p => {
                   const todayAttempts = quizAttempts.filter(a => 
                     String(a.participantId) === String(p.id) && 
-                    new Date(a.completedAt).toISOString().split("T")[0] === today
+                    new Date(a.completedAt).toLocaleDateString('en-CA') === today
                   );
                   const todayPts = todayAttempts.reduce((sum, a) => sum + a.earnedPoints, 0);
                   const maxScore = todayAttempts.length > 0 ? Math.max(...todayAttempts.map(a => a.score)) : 0;

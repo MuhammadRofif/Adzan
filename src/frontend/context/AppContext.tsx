@@ -475,15 +475,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       if (participantPoints < pkg.pointsRequired)
         return { success: false, message: "Poin tidak mencukupi." };
       
+      const now = new Date();
+      const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+      startOfWeek.setHours(0, 0, 0, 0);
+
       const thisWeekRedeems = redeemHistory.filter(
         (r) =>
           String(r.participantId) === String(participantId) &&
           String(r.packageId) === String(packageId) &&
-          r.status !== "rejected",
+          r.status !== "rejected" &&
+          new Date(r.requestedAt) >= startOfWeek
       ).length;
       
       if (thisWeekRedeems >= pkg.weeklyQuota)
-        return { success: false, message: "Kuota redeem mingguan sudah habis." };
+        return { success: false, message: "Kuota redeem mingguan kamu sudah habis. Coba lagi minggu depan!" };
       
       if (budgetStatus.usedBudget + pkg.budgetCost > budgetStatus.totalBudget)
         return { success: false, message: "Budget bulan ini sudah habis." };
@@ -499,7 +504,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       if (error) return { success: false, message: "Gagal mengirim permintaan redeem." };
 
       showToast(`Permintaan redeem "${pkg.name}" berhasil dikirim!`);
-      loadAllData();
+      await loadAllData();
       return { success: true, message: "Permintaan redeem berhasil dikirim." };
     },
     [redeemPackages, participants, points, redeemHistory, budgetStatus, showToast, loadAllData],
@@ -508,7 +513,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   const processRedeem = useCallback(
     async (redeemId: string | number, action: "approved" | "rejected") => {
       const r = redeemHistory.find(item => String(item.id) === String(redeemId));
-      if (!r) return;
+      if (!r || r.status !== 'pending') return;
 
       const { error } = await supabase.from("redeem_history").update({
         status: action,
@@ -532,7 +537,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       }
 
       showToast(`Permintaan redeem berhasil ${action === "approved" ? "disetujui" : "ditolak"}.`);
-      loadAllData();
+      await loadAllData();
     },
     [redeemHistory, addTransaction, showToast, loadAllData],
   );
@@ -549,14 +554,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       const score = Math.round((correct / quiz.questions.length) * 100);
       const earnedPoints = correct;
 
-      const today = new Date().toISOString().split("T")[0];
+      // Use local date for "today" to avoid UTC rollover issues
+      const today = new Date().toLocaleDateString('en-CA');
       
       // Logic: Points only once per day for each specific quiz
       const alreadyEarnedToday = quizAttempts.some(
         (a) =>
           String(a.participantId) === String(participantId) &&
           String(a.quizId) === String(quizId) &&
-          new Date(a.completedAt).toISOString().split("T")[0] === today &&
+          new Date(a.completedAt).toLocaleDateString('en-CA') === today &&
           a.earnedPoints > 0
       );
 
@@ -588,7 +594,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         showToast("Poin untuk kuis ini sudah diambil hari ini. Coba lagi besok!", "info");
       }
 
-      loadAllData();
+      await loadAllData();
       return { score, earnedPoints: finalEarnedPoints };
     },
     [quizzes, quizAttempts, addTransaction, showToast, loadAllData],
