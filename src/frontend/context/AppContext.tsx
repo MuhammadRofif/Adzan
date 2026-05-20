@@ -54,6 +54,11 @@ interface AppContextType {
     prayerTime: string,
     attitude: string,
   ) => void;
+  recordSholawatIqomah: (
+    participantId: string,
+    prayerTime: string,
+    attitude: string,
+  ) => void;
 
   // Redeem
   redeemPackages: RedeemPackage[];
@@ -106,6 +111,7 @@ type PointValue = {
   adzanCount: number;
   attendanceCount: number;
   quizCount: number;
+  sholawatIqomahCount: number;
 };
 
 type BudgetStatus = {
@@ -125,6 +131,7 @@ const emptyPointValue = (): PointValue => ({
   adzanCount: 0,
   attendanceCount: 0,
   quizCount: 0,
+  sholawatIqomahCount: 0,
 });
 
 // ─── Context ──────────────────────────────────────────────────────────────────────
@@ -291,7 +298,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       });
 
       mappedAdzan.forEach((a: any) => {
-        if (pointMap[a.participantId]) pointMap[a.participantId].adzanCount++;
+        if (pointMap[a.participantId]) {
+          if (a.adzanPoints === 8) {
+            pointMap[a.participantId].sholawatIqomahCount++;
+          } else {
+            pointMap[a.participantId].adzanCount++;
+          }
+        }
       });
 
       mappedQuizAttempts.forEach((qa: any) => {
@@ -459,6 +472,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         adminId: "admin",
       });
       showToast(`Adzan ${participant.nama} berhasil dicatat (+10 poin).`);
+      loadAllData();
+    },
+    [participants, addTransaction, showToast, loadAllData],
+  );
+
+  const recordSholawatIqomah = useCallback(
+    async (participantId: string | number, prayerTime: string, attitude: string) => {
+      const participant = participants.find((p) => String(p.id) === String(participantId));
+      if (!participant) return;
+      
+      const totalPoints = 8;
+      const { error } = await supabase.from("adzan_log").insert([{
+        participant_id: participantId,
+        prayer_time: prayerTime,
+        attitude: attitude,
+        attitude_points: 0,
+        adzan_points: 8,
+        total: totalPoints,
+        date: new Date().toISOString().split("T")[0]
+      }]);
+
+      if (error) {
+        showToast("Gagal mencatat sholawat + iqomah", "error");
+        return;
+      }
+
+      const reason = `Sholawat + Iqomah${prayerTime ? ` ${prayerTime}` : ""} - Sikap: ${attitude}`;
+      await addTransaction({
+        participantId: String(participantId),
+        type: "adzan",
+        points: totalPoints,
+        reason,
+        adminId: "admin",
+      });
+      showToast(`Sholawat + Iqomah ${participant.nama} berhasil dicatat (+8 poin).`);
       loadAllData();
     },
     [participants, addTransaction, showToast, loadAllData],
@@ -736,6 +784,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         recordAttendance,
         adzanLog,
         recordAdzan,
+        recordSholawatIqomah,
         redeemPackages,
         redeemHistory,
         requestRedeem,

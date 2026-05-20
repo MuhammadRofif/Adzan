@@ -14,7 +14,7 @@ const ATTITUDES = [
 ];
 
 export const Tracking: React.FC = () => {
-  const { participants, adzanLog, attendanceLog, recordAttendance, recordAdzan } = useApp();
+  const { participants, adzanLog, attendanceLog, recordAttendance, recordAdzan, recordSholawatIqomah } = useApp();
 
   const [activeTab, setActiveTab] = useState<'adzan' | 'attendance'>('adzan');
   const [search, setSearch] = useState('');
@@ -25,6 +25,7 @@ export const Tracking: React.FC = () => {
   const [adzParticipant, setAdzParticipant] = useState('');
   const [adzPrayer, setAdzPrayer] = useState('Ashar');
   const [adzAttitude, setAdzAttitude] = useState('Bagus');
+  const [adzRole, setAdzRole] = useState<'adzan' | 'sholawat_iqomah'>('adzan');
 
   const filteredAdzan = adzanLog.filter(a => a.participantName.toLowerCase().includes(search.toLowerCase()));
   const filteredAttendance = attendanceLog.filter(a => a.participantName.toLowerCase().includes(search.toLowerCase()));
@@ -39,7 +40,7 @@ export const Tracking: React.FC = () => {
         action={
           <div className="flex gap-2">
             <Button variant="secondary" leftIcon={<CheckCircle2 className="w-4 h-4" />} onClick={() => setAttendanceModal(true)}>Catat Sikap Bagus</Button>
-            <Button leftIcon={<PlusCircle className="w-4 h-4" />} onClick={() => setAdzanModal(true)}>Catat Adzan</Button>
+            <Button leftIcon={<PlusCircle className="w-4 h-4" />} onClick={() => { setAdzRole('adzan'); setAdzanModal(true); }}>Catat Peran Masjid</Button>
           </div>
         }
       />
@@ -90,7 +91,12 @@ export const Tracking: React.FC = () => {
                           <span className="font-medium text-gray-900">{a.participantName}</span>
                         </div>
                       </td>
-                      <td className="px-5 py-4 text-gray-700">{a.prayerTime}</td>
+                      <td className="px-5 py-4 text-gray-700 font-medium">
+                        {a.prayerTime}
+                        <span className="text-xs text-gray-400 block font-normal mt-0.5">
+                          {a.adzanPoints === 10 ? '📢 Adzan' : '📿 Sholawat + Iqomah'}
+                        </span>
+                      </td>
                       <td className="px-5 py-4">
                         <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border', att?.bg)}>
                           <span className={cn('w-1.5 h-1.5 rounded-full', att?.dot)} />{a.attitude}
@@ -161,9 +167,19 @@ export const Tracking: React.FC = () => {
         </div>
       </Modal>
 
-      <Modal isOpen={adzanModal} onClose={() => setAdzanModal(false)} title="Catat Adzan"
+      <Modal isOpen={adzanModal} onClose={() => setAdzanModal(false)} title="Catat Peran / Tugas Masjid"
         footer={<>
-          <Button onClick={() => { if (adzParticipant) { recordAdzan(adzParticipant, adzPrayer, adzAttitude); setAdzanModal(false); setAdzParticipant(''); } }} className="w-full sm:w-auto sm:ml-3" disabled={!adzParticipant}>Simpan</Button>
+          <Button onClick={() => { 
+            if (adzParticipant) { 
+              if (adzRole === 'adzan') {
+                recordAdzan(adzParticipant, adzPrayer, adzAttitude); 
+              } else {
+                recordSholawatIqomah(adzParticipant, adzPrayer, adzAttitude);
+              }
+              setAdzanModal(false); 
+              setAdzParticipant(''); 
+            } 
+          }} className="w-full sm:w-auto sm:ml-3" disabled={!adzParticipant}>Simpan</Button>
           <Button variant="ghost" onClick={() => setAdzanModal(false)} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
         </>}
       >
@@ -171,6 +187,10 @@ export const Tracking: React.FC = () => {
           <Select label="Nama Peserta" value={adzParticipant} onChange={e => setAdzParticipant(e.target.value)}>
             <option value="">Pilih Peserta...</option>
             {participants.filter(p => p.status === 'aktif').map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
+          </Select>
+          <Select label="Tugas / Peran" value={adzRole} onChange={e => setAdzRole(e.target.value as any)}>
+            <option value="adzan">Kumandangkan Adzan (+10 Poin)</option>
+            <option value="sholawat_iqomah">Sholawat + Iqomah (+8 Poin)</option>
           </Select>
           <Select label="Waktu Shalat" value={adzPrayer} onChange={e => setAdzPrayer(e.target.value)}>
             {PRAYER_TIMES.map(t => <option key={t} value={t}>{t}</option>)}

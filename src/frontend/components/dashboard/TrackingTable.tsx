@@ -37,7 +37,7 @@ export const TrackingTable: React.FC = () => {
               <th className="px-6 py-4 font-semibold text-gray-500">Nama Peserta</th>
               <th className="px-6 py-4 font-semibold text-gray-500">Status</th>
               <th className="px-6 py-4 font-semibold text-gray-500">Jumlah Adzan</th>
-              <th className="px-6 py-4 font-semibold text-gray-500">Total Poin</th>
+              <th className="px-6 py-4 font-semibold text-gray-500 text-center">Total Poin</th>
               <th className="px-6 py-4 font-semibold text-gray-500 text-right">Aksi</th>
             </tr>
           </thead>

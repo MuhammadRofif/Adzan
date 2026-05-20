@@ -1,4 +1,5 @@
 import React, { Fragment, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -12,6 +13,17 @@ interface ModalProps {
 }
 
 export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footer, size = 'md' }) => {
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const sizeClasses = {
@@ -21,8 +33,8 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
     xl: 'max-w-xl',
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] overflow-y-auto">
       <div className="flex min-h-screen items-center justify-center p-4 text-center sm:p-0">
         <div 
           className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm transition-opacity" 
@@ -57,6 +69,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

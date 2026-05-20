@@ -7,6 +7,7 @@ import { AdminGuard } from './components/layout/AdminGuard';
 
 import { Dashboard } from './pages/Dashboard';
 import { Participants } from './pages/Participants';
+import { SchedulePage } from './pages/Schedule';
 import { Tracking } from './pages/Tracking';
 import { QuizPage } from './pages/Quiz';
 import { Redeem } from './pages/Redeem';
@@ -36,6 +37,7 @@ const App: React.FC = () => {
             <Route path="/admin" element={<DashboardLayout />}>
               <Route index element={<Dashboard />} />
               <Route path="participants" element={<Participants />} />
+              <Route path="schedule" element={<SchedulePage />} />
               <Route path="quiz" element={<QuizPage />} />
               <Route path="redeem" element={<Redeem />} />
               <Route path="settings" element={<Settings />} />

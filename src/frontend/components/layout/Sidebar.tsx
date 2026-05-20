@@ -1,6 +1,6 @@
 import React, { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Users, CheckSquare, Gift, Settings, BarChart2, BookOpen } from 'lucide-react';
+import { Home, Users, BookOpen, Gift, Settings, Calendar } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 interface SidebarProps {
@@ -17,6 +17,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { name: 'Dashboard', href: '/admin', icon: <Home className="w-5 h-5" /> },
   { name: 'Manajemen Peserta', href: '/admin/participants', icon: <Users className="w-5 h-5" /> },
+  { name: 'Jadwal Adzan', href: '/admin/schedule', icon: <Calendar className="w-5 h-5" /> },
   { name: 'Quiz Keislaman', href: '/admin/quiz', icon: <BookOpen className="w-5 h-5" /> },
   { name: 'Redeem Hadiah', href: '/admin/redeem', icon: <Gift className="w-5 h-5" /> },
   { name: 'Pengaturan', href: '/admin/settings', icon: <Settings className="w-5 h-5" /> },

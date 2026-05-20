@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useApp } from '../../context/AppContext';
 import { cn } from '../../utils/cn';
 import { RedeemPackage } from '../../../shared/types';
@@ -15,6 +16,17 @@ export const BocilRedeem: React.FC = () => {
     const saved = localStorage.getItem('bocil_id');
     if (saved) setSelectedParticipant(saved);
   }, []);
+
+  useEffect(() => {
+    if (confirmPkg) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [confirmPkg]);
 
   const activeParticipants = participants.filter(p => p.status === 'aktif');
   const participantPts = selectedParticipant ? (points[selectedParticipant]?.total ?? 0) : 0;
@@ -166,8 +178,8 @@ export const BocilRedeem: React.FC = () => {
       )}
 
       {/* Confirmation Modal */}
-      {confirmPkg && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => !isSubmitting && setConfirmPkg(null)}>
+      {confirmPkg && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => !isSubmitting && setConfirmPkg(null)}>
           <div className="bg-white rounded-3xl shadow-2xl p-6 sm:p-8 max-w-sm w-full animate-fade-in" onClick={e => e.stopPropagation()}>
             <div className="text-center mb-6">
               <div className="text-5xl mb-4">🤔</div>
@@ -198,7 +210,8 @@ export const BocilRedeem: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Success Popup */}

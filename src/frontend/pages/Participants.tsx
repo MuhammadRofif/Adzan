@@ -11,11 +11,65 @@ import { cn } from '../utils/cn';
 const statusLabels: Record<ParticipantStatus, string> = { aktif: 'Aktif', tidak_aktif: 'Tidak Aktif', baru: 'Baru' };
 const statusVariants: Record<ParticipantStatus, 'active' | 'inactive' | 'new'> = { aktif: 'active', tidak_aktif: 'inactive', baru: 'new' };
 
+const compressImage = (file: File): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 300;
+        const MAX_HEIGHT = 300;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height = Math.round((height * MAX_WIDTH) / width);
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width = Math.round((width * MAX_HEIGHT) / height);
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('Canvas blob is empty'));
+            }
+          },
+          'image/jpeg',
+          0.8
+        );
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+};
+
 export const Participants: React.FC = () => {
-  const { participants, points, addParticipant, updateParticipantStatus, recordAttendance, recordAdzan, uploadAvatar, updateParticipantAvatar } = useApp();
+  const { participants, points, addParticipant, updateParticipantStatus, recordAttendance, recordAdzan, recordSholawatIqomah, uploadAvatar, updateParticipantAvatar } = useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const [multiModal, setMultiModal] = useState(false);
-  const [multiType, setMultiType] = useState<'attendance' | 'adzan'>('attendance');
+  const [multiType, setMultiType] = useState<'attendance' | 'adzan' | 'sholawat_iqomah'>('attendance');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   
   const [attAttitude, setAttAttitude] = useState('Bagus');
@@ -25,8 +79,8 @@ export const Participants: React.FC = () => {
 
   React.useEffect(() => {
     const action = searchParams.get('action');
-    if (action === 'attendance' || action === 'adzan') {
-      setMultiType(action);
+    if (action === 'attendance' || action === 'adzan' || action === 'sholawat_iqomah') {
+      setMultiType(action as any);
       setMultiModal(true);
       // Clear param after opening
       const newParams = new URLSearchParams(searchParams);
@@ -72,6 +126,9 @@ export const Participants: React.FC = () => {
             <Button variant="secondary" leftIcon={<CheckCircle2 className="w-4 h-4" />} onClick={() => { setMultiType('attendance'); setSelectedIds([]); setMultiModal(true); }}>
               Absen Latihan
             </Button>
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white" leftIcon={<span className="text-sm">📿</span>} onClick={() => { setMultiType('sholawat_iqomah'); setSelectedIds([]); setMultiModal(true); }}>
+              Absen Sholawat + Iqomah
+            </Button>
             <Button variant="primary" leftIcon={<Mic className="w-4 h-4" />} onClick={() => { setMultiType('adzan'); setSelectedIds([]); setMultiModal(true); }}>
               Absen Adzan
             </Button>
@@ -107,7 +164,7 @@ export const Participants: React.FC = () => {
             <table className="w-full text-sm">
               <thead className="bg-gray-50/60">
                 <tr>
-                  {['No', 'Nama Peserta', 'Status', 'Catat Aktivitas', 'Jumlah Adzan', 'Poin', 'Aksi'].map(h => (
+                  {['No', 'Nama Peserta', 'Status', 'Catat Aktivitas', 'Jumlah Peran', 'Poin', 'Aksi'].map(h => (
                     <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -139,7 +196,12 @@ export const Participants: React.FC = () => {
                           Klik grid di atas untuk absen cepat
                         </div>
                       </td>
-                      <td className="px-6 py-4 font-medium text-gray-900">{pt.adzanCount}×</td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-gray-900">Adzan: {pt.adzanCount}×</span>
+                          <span className="text-xs text-gray-500">Sholawat + Iqomah: {pt.sholawatIqomahCount ?? 0}×</span>
+                        </div>
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
                           <span className="font-bold text-primary-600">{pt.total} <span className="text-[10px] text-gray-400 font-normal">pts</span></span>
@@ -193,13 +255,18 @@ export const Participants: React.FC = () => {
 
       {/* Multi Select Modal */}
       <Modal isOpen={multiModal} onClose={() => setMultiModal(false)} 
-        title={multiType === 'attendance' ? 'Absen Massal Latihan' : 'Absen Massal Adzan'} 
+        title={multiType === 'attendance' ? 'Absen Massal Latihan' : multiType === 'sholawat_iqomah' ? 'Absen Massal Sholawat + Iqomah' : 'Absen Massal Adzan'} 
         size="lg"
         footer={<>
           <Button onClick={() => {
             selectedIds.forEach(id => {
-              if (multiType === 'attendance') recordAttendance(id, '', attAttitude);
-              else recordAdzan(id, '', 'Bagus'); // Adzan default to Bagus for now
+              if (multiType === 'attendance') {
+                recordAttendance(id, '', attAttitude);
+              } else if (multiType === 'sholawat_iqomah') {
+                recordSholawatIqomah(id, '', 'Bagus');
+              } else {
+                recordAdzan(id, '', 'Bagus');
+              }
             });
             setMultiModal(false);
           }} className="w-full sm:w-auto sm:ml-3" disabled={selectedIds.length === 0}>
@@ -286,11 +353,18 @@ export const Participants: React.FC = () => {
                       const file = e.target.files?.[0];
                       if (file) {
                         try {
-                          const url = await uploadAvatar(file, detailModal.id);
+                          // Compress image on client-side before upload
+                          const compressedBlob = await compressImage(file);
+                          const compressedFile = new File([compressedBlob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+                            type: 'image/jpeg',
+                            lastModified: Date.now()
+                          });
+
+                          const url = await uploadAvatar(compressedFile, detailModal.id);
                           await updateParticipantAvatar(detailModal.id, url);
                           setDetailModal(prev => prev ? { ...prev, avatar_url: url } : null);
                         } catch (err) {
-                          console.error(err);
+                          console.error('Compression or upload error:', err);
                         }
                       }
                     }}
@@ -307,14 +381,16 @@ export const Participants: React.FC = () => {
               </div>
             </div>
             
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
                 { label: 'Total Poin', value: `${points[detailModal.id]?.total ?? 0} pts`, color: 'text-primary-600' },
-                { label: 'Jumlah Adzan', value: `${points[detailModal.id]?.adzanCount ?? 0}×`, color: 'text-gray-900' },
+                { label: 'Poin Adzan & Peran', value: `${points[detailModal.id]?.adzan ?? 0} pts`, color: 'text-emerald-600' },
                 { label: 'Poin Kehadiran', value: `${points[detailModal.id]?.attendance ?? 0} pts`, color: 'text-blue-600' },
-                { label: 'Poin Sikap', value: `${points[detailModal.id]?.attitude ?? 0} pts`, color: 'text-orange-600' },
-                { label: 'Poin Adzan', value: `${points[detailModal.id]?.adzan ?? 0} pts`, color: 'text-emerald-600' },
                 { label: 'Poin Quiz', value: `${points[detailModal.id]?.quiz ?? 0} pts`, color: 'text-indigo-600' },
+                { label: 'Jumlah Adzan', value: `${points[detailModal.id]?.adzanCount ?? 0}×`, color: 'text-gray-900' },
+                { label: 'Jumlah Sholawat + Iqomah', value: `${points[detailModal.id]?.sholawatIqomahCount ?? 0}×`, color: 'text-blue-900' },
+                { label: 'Jumlah Latihan', value: `${points[detailModal.id]?.attendanceCount ?? 0}×`, color: 'text-emerald-900' },
+                { label: 'Jumlah Quiz', value: `${points[detailModal.id]?.quizCount ?? 0}×`, color: 'text-indigo-900' },
               ].map(item => (
                 <div key={item.label} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{item.label}</p>
