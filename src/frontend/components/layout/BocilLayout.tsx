@@ -23,7 +23,7 @@ export const BocilLayout: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-teal-50/40 font-sans">
       {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-emerald-100 shadow-sm">
+      <header className="sticky top-0 z-40 bg-white border-b border-emerald-100 shadow-sm">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 sm:px-6 h-16">
           {/* Logo */}
           <div className="flex items-center gap-2 sm:gap-3">
@@ -83,7 +83,7 @@ export const BocilLayout: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-gray-100 bg-white/50 backdrop-blur-md py-4 mt-8">
+      <footer className="border-t border-gray-100 bg-white py-4 mt-8">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 text-center">
           <p className="text-xs text-gray-400">
             🕌 AdzanChallenge • Semangat beribadah, bocil hebat! 💪

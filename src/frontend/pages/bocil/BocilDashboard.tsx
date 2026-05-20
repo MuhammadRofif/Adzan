@@ -917,7 +917,7 @@ export const BocilDashboard: React.FC = () => {
             style={{ animationDelay: "0.3s" }}
           >
             {selectedUser && myStats && myPangkat ? (
-              <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl p-6 text-white min-w-[320px]">
+              <div className="bg-white/15 border border-white/20 rounded-3xl p-6 text-white min-w-[320px]">
                 <div className="flex items-start gap-4 mb-4">
                   <div
                     className={cn(
@@ -990,7 +990,7 @@ export const BocilDashboard: React.FC = () => {
                 )}
               </div>
             ) : (
-              <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl p-6 text-white text-center">
+              <div className="bg-white/15 border border-white/20 rounded-3xl p-6 text-white text-center">
                 <p className="text-sm font-bold mb-4">
                   Ayo mulai berburu pahala! 🔥
                 </p>

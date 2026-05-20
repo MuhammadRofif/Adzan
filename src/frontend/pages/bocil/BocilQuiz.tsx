@@ -1199,8 +1199,8 @@ export const BocilQuiz: React.FC = () => {
       <div className="mt-16 mb-12">
         <div className="bg-slate-900 rounded-[32px] sm:rounded-[40px] p-4 sm:p-8 relative overflow-hidden shadow-2xl border-4 border-red-500/30">
           {/* Background effects */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-red-600/10 rounded-full -mr-32 -mt-32 blur-3xl animate-pulse" />
-          <div className="absolute bottom-0 left-0 w-48 h-48 bg-orange-600/10 rounded-full -ml-24 -mb-24 blur-3xl animate-pulse" />
+          <div className="absolute top-0 right-0 w-64 h-64 bg-red-600/10 rounded-full -mr-32 -mt-32 animate-pulse" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-orange-600/10 rounded-full -ml-24 -mb-24 animate-pulse" />
           
           <div className="relative z-10">
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-10">
@@ -1297,7 +1297,7 @@ export const BocilQuiz: React.FC = () => {
 
                         {/* Avatar with golden glowing aura */}
                         <div className="relative mb-5 mt-2">
-                          <div className="absolute inset-0 bg-yellow-400 rounded-full blur-2xl animate-pulse scale-150 opacity-35 animate-gentle-pulse" />
+                          <div className="absolute inset-0 bg-yellow-400 rounded-full scale-150 opacity-20 animate-gentle-pulse" />
                           <div className="w-28 h-28 rounded-[36px] bg-gradient-to-br from-yellow-400 via-amber-500 to-yellow-600 flex items-center justify-center text-5xl font-black text-white shadow-xl relative z-10 overflow-hidden border-4 border-yellow-300">
                             {king.avatar_url ? (
                               <img src={king.avatar_url} alt={king.nama} className="w-full h-full object-cover" loading="lazy" decoding="async" />
@@ -1369,7 +1369,7 @@ export const BocilQuiz: React.FC = () => {
                           return (
                             <div 
                               key={p.id} 
-                              className="group relative bg-white/5 backdrop-blur-sm border border-emerald-500/20 hover:border-emerald-500/50 p-4 rounded-[28px] transition-all duration-300 flex flex-col items-center text-center shadow-lg"
+                              className="group relative bg-white/5 border border-emerald-500/20 hover:border-emerald-500/50 p-4 rounded-[28px] transition-all duration-300 flex flex-col items-center text-center shadow-lg"
                             >
                               {/* Rank Badge */}
                               <div className={cn(
