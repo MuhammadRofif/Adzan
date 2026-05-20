@@ -10,6 +10,25 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // Enable CSS code splitting for lazy-loaded routes
+    cssCodeSplit: true,
+    // Report compressed sizes in build output
+    reportCompressedSize: true,
+    // Target modern browsers for smaller output
+    target: 'es2020',
+    // Manual chunk splitting for optimal caching
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Core React runtime — rarely changes, cached long-term
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // Supabase client — separate chunk
+          'vendor-supabase': ['@supabase/supabase-js'],
+          // UI libraries — lucide icons, framer-motion, clsx, tailwind-merge
+          'vendor-ui': ['lucide-react', 'framer-motion', 'clsx', 'tailwind-merge'],
+        },
+      },
+    },
   },
   resolve: {
     alias: {

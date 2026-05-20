@@ -179,7 +179,7 @@ export const Participants: React.FC = () => {
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-sm flex-shrink-0 overflow-hidden border border-gray-100">
                             {p.avatar_url ? (
-                              <img src={p.avatar_url} alt={p.nama} className="w-full h-full object-cover" />
+                              <img src={p.avatar_url} alt={p.nama} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                             ) : (
                               p.nama.charAt(0)
                             )}
@@ -339,7 +339,7 @@ export const Participants: React.FC = () => {
               <div className="relative group">
                 <div className="w-24 h-24 rounded-3xl bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-4xl overflow-hidden shadow-inner border-2 border-white">
                   {detailModal.avatar_url ? (
-                    <img src={detailModal.avatar_url} alt={detailModal.nama} className="w-full h-full object-cover" />
+                    <img src={detailModal.avatar_url} alt={detailModal.nama} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                   ) : (
                     detailModal.nama.charAt(0)
                   )}

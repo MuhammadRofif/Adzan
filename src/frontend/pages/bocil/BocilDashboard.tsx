@@ -1128,6 +1128,8 @@ export const BocilDashboard: React.FC = () => {
                         src={leaderboard[0].avatar_url}
                         alt={leaderboard[0].nama}
                         className="w-full h-full object-cover"
+                        loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       leaderboard[0].nama.charAt(0)
@@ -1188,6 +1190,8 @@ export const BocilDashboard: React.FC = () => {
                           src={leaderboard[2].avatar_url}
                           alt={leaderboard[2].nama}
                           className="w-full h-full object-cover"
+                          loading="lazy"
+                          decoding="async"
                         />
                       ) : (
                         leaderboard[2].nama.charAt(0)
@@ -1278,6 +1282,8 @@ export const BocilDashboard: React.FC = () => {
                               src={p.avatar_url}
                               alt={p.nama}
                               className="w-full h-full object-cover"
+                              loading="lazy"
+                              decoding="async"
                             />
                           ) : (
                             p.nama.charAt(0)
@@ -1510,7 +1516,7 @@ export const BocilDashboard: React.FC = () => {
                                 ${isMySlot ? 'bg-yellow-950 text-yellow-400' : 'bg-primary-100 text-primary-700'}`}
                               >
                                 {registeredKid?.avatar_url ? (
-                                  <img src={registeredKid.avatar_url} alt={name} className="w-full h-full object-cover" />
+                                  <img src={registeredKid.avatar_url} alt={name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                 ) : (
                                   name.charAt(0)
                                 )}
@@ -1611,7 +1617,7 @@ export const BocilDashboard: React.FC = () => {
                               ${isMySlot ? 'bg-yellow-950 text-yellow-400' : 'bg-primary-100 text-primary-700'}`}
                             >
                               {registeredKid?.avatar_url ? (
-                                <img src={registeredKid.avatar_url} alt={name} className="w-full h-full object-cover" />
+                                <img src={registeredKid.avatar_url} alt={name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                               ) : (
                                 name.charAt(0)
                               )}
@@ -1757,6 +1763,8 @@ export const BocilDashboard: React.FC = () => {
                     src={viewParticipant.avatar_url}
                     alt={viewParticipant.nama}
                     className="w-full h-full object-cover"
+                    loading="lazy"
+                    decoding="async"
                   />
                 ) : (
                   viewParticipant.nama.charAt(0)

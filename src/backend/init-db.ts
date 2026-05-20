@@ -98,6 +98,7 @@ export async function initializeDatabase(): Promise<void> {
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         title VARCHAR(255) NOT NULL,
         description TEXT,
+        mode VARCHAR(50) DEFAULT 'biasa',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );

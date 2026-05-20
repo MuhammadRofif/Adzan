@@ -3,6 +3,7 @@ import React, {
   useContext,
   useState,
   useCallback,
+  useMemo,
   ReactNode,
   useEffect,
 } from "react";
@@ -78,6 +79,7 @@ interface AppContextType {
     answers: number[],
   ) => Promise<{ score: number; earnedPoints: number }>;
   addQuiz: (quiz: Omit<Quiz, "id" | "createdAt">) => void;
+  updateQuiz: (id: string, quiz: Omit<Quiz, "id" | "createdAt">) => void;
   toggleQuizActive: (quizId: string) => void;
   deleteQuiz: (quizId: string) => void;
 
@@ -239,14 +241,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         processedBy: r.processed_by
       }));
 
-      const mappedQuizzes = (qData || []).map((q: any) => ({
-        id: q.id,
-        title: q.title,
-        description: q.description,
-        questions: q.questions,
-        createdAt: new Date(q.created_at),
-        isActive: q.is_active
-      }));
+      const mappedQuizzes = (qData || []).map((q: any) => {
+        const rawDesc = q.description || "";
+        const hasEmbedMode = rawDesc.includes("||mode:");
+        const mode = q.mode || (hasEmbedMode ? rawDesc.split("||mode:")[1].trim() : 'biasa');
+        const description = hasEmbedMode ? rawDesc.split("||mode:")[0].trim() : rawDesc;
+        return {
+          id: q.id,
+          title: q.title,
+          description: description,
+          questions: q.questions,
+          createdAt: new Date(q.created_at),
+          isActive: q.is_active,
+          mode: mode as 'biasa' | 'block_blast'
+        };
+      });
 
       const mappedQuizAttempts = (qaData || []).map((qa: any) => ({
         id: qa.id,
@@ -605,16 +614,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       // Use local date for "today" to avoid UTC rollover issues
       const today = new Date().toLocaleDateString('en-CA');
       
-      // Logic: Points only once per day for each specific quiz
-      const alreadyEarnedToday = quizAttempts.some(
-        (a) =>
-          String(a.participantId) === String(participantId) &&
-          String(a.quizId) === String(quizId) &&
-          new Date(a.completedAt).toLocaleDateString('en-CA') === today &&
-          a.earnedPoints > 0
-      );
+      // Logic: Points can be earned incrementally up to the maximum correct answers for today.
+      const pointsEarnedToday = quizAttempts
+        .filter(
+          (a) =>
+            String(a.participantId) === String(participantId) &&
+            String(a.quizId) === String(quizId) &&
+            new Date(a.completedAt).toLocaleDateString('en-CA') === today
+        )
+        .reduce((sum, a) => sum + (a.earnedPoints || 0), 0);
 
-      const finalEarnedPoints = alreadyEarnedToday ? 0 : earnedPoints;
+      const finalEarnedPoints = Math.max(0, earnedPoints - pointsEarnedToday);
 
       const { error } = await supabase.from("quiz_attempts").insert([{
         participant_id: participantId,
@@ -638,8 +648,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
           reason: `Quiz: ${quiz.title} - Skor: ${score}%`,
           adminId: "system",
         });
-      } else if (earnedPoints > 0 && alreadyEarnedToday) {
-        showToast("Poin untuk kuis ini sudah diambil hari ini. Coba lagi besok!", "info");
+      } else if (earnedPoints > 0 && pointsEarnedToday > 0) {
+        if (pointsEarnedToday >= quiz.questions.length) {
+          showToast("Kamu sudah mendapatkan poin maksimal untuk kuis ini hari ini!", "info");
+        } else {
+          showToast("Terus tingkatkan benarmu untuk mendapat sisa poin!", "info");
+        }
       }
 
       await loadAllData();
@@ -650,16 +664,72 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
 
   const addQuiz = useCallback(
     async (quiz: Omit<Quiz, "id" | "createdAt">) => {
+      const finalMode = quiz.mode || 'biasa';
       const { error } = await supabase.from("quizzes").insert([{
         title: quiz.title,
         description: quiz.description,
         questions: quiz.questions,
-        is_active: quiz.isActive
+        is_active: quiz.isActive,
+        mode: finalMode
       }]);
-      if (error) showToast("Gagal menambah quiz", "error");
-      else showToast(`Quiz "${quiz.title}" berhasil ditambahkan.`);
+      
+      if (error) {
+        // Fallback: store mode in description
+        const fallbackDescription = `${quiz.description} ||mode:${finalMode}`;
+        const { error: fallbackError } = await supabase.from("quizzes").insert([{
+          title: quiz.title,
+          description: fallbackDescription,
+          questions: quiz.questions,
+          is_active: quiz.isActive
+        }]);
+        
+        if (fallbackError) {
+          showToast("Gagal menambah kuis", "error");
+        } else {
+          showToast(`Kuis "${quiz.title}" berhasil ditambahkan.`);
+          loadAllData();
+        }
+      } else {
+        showToast(`Kuis "${quiz.title}" berhasil ditambahkan.`);
+        loadAllData();
+      }
     },
-    [showToast],
+    [showToast, loadAllData],
+  );
+
+  const updateQuiz = useCallback(
+    async (id: string, quiz: Omit<Quiz, "id" | "createdAt">) => {
+      const finalMode = quiz.mode || 'biasa';
+      const { error } = await supabase.from("quizzes").update({
+        title: quiz.title,
+        description: quiz.description,
+        questions: quiz.questions,
+        is_active: quiz.isActive,
+        mode: finalMode
+      }).eq("id", id);
+      
+      if (error) {
+        // Fallback: store mode in description
+        const fallbackDescription = `${quiz.description} ||mode:${finalMode}`;
+        const { error: fallbackError } = await supabase.from("quizzes").update({
+          title: quiz.title,
+          description: fallbackDescription,
+          questions: quiz.questions,
+          is_active: quiz.isActive
+        }).eq("id", id);
+        
+        if (fallbackError) {
+          showToast("Gagal memperbarui kuis", "error");
+        } else {
+          showToast(`Kuis "${quiz.title}" berhasil diperbarui.`);
+          loadAllData();
+        }
+      } else {
+        showToast(`Kuis "${quiz.title}" berhasil diperbarui.`);
+        loadAllData();
+      }
+    },
+    [showToast, loadAllData],
   );
 
   const toggleQuizActive = useCallback(async (quizId: string | number) => {
@@ -771,41 +841,50 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     }
   }, [loadAllData, showToast]);
 
+  const contextValue = useMemo(() => ({
+    participants,
+    addParticipant,
+    updateParticipantStatus,
+    points,
+    transactions,
+    addTransaction,
+    attendanceLog,
+    recordAttendance,
+    adzanLog,
+    recordAdzan,
+    recordSholawatIqomah,
+    redeemPackages,
+    redeemHistory,
+    requestRedeem,
+    processRedeem,
+    quizzes,
+    quizAttempts,
+    submitQuiz,
+    addQuiz,
+    updateQuiz,
+    toggleQuizActive,
+    deleteQuiz,
+    budgetStatus,
+    toast,
+    showToast,
+    isLoading,
+    quickAbsen,
+    setQuickAbsen,
+    seedDatabase,
+    uploadAvatar,
+    updateParticipantAvatar,
+  }), [
+    participants, addParticipant, updateParticipantStatus, points,
+    transactions, addTransaction, attendanceLog, recordAttendance,
+    adzanLog, recordAdzan, recordSholawatIqomah, redeemPackages,
+    redeemHistory, requestRedeem, processRedeem, quizzes, quizAttempts,
+    submitQuiz, addQuiz, updateQuiz, toggleQuizActive, deleteQuiz,
+    budgetStatus, toast, showToast, isLoading, quickAbsen, setQuickAbsen,
+    seedDatabase, uploadAvatar, updateParticipantAvatar,
+  ]);
+
   return (
-    <AppContext.Provider
-      value={{
-        participants,
-        addParticipant,
-        updateParticipantStatus,
-        points,
-        transactions,
-        addTransaction,
-        attendanceLog,
-        recordAttendance,
-        adzanLog,
-        recordAdzan,
-        recordSholawatIqomah,
-        redeemPackages,
-        redeemHistory,
-        requestRedeem,
-        processRedeem,
-        quizzes,
-        quizAttempts,
-        submitQuiz,
-        addQuiz,
-        toggleQuizActive,
-        deleteQuiz,
-        budgetStatus,
-        toast,
-        showToast,
-        isLoading,
-        quickAbsen,
-        setQuickAbsen,
-        seedDatabase,
-        uploadAvatar,
-        updateParticipantAvatar,
-      }}
-    >
+    <AppContext.Provider value={contextValue}>
       {children}
     </AppContext.Provider>
   );

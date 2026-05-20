@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+/* FASE 3: Removed duplicate @import for Google Fonts — already loaded in index.html */
 
 @tailwind base;
 @tailwind components;
@@ -64,14 +64,13 @@
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-600 to-teal-500;
   }
+  /* FASE 4: Replaced backdrop-filter blur with solid rgba background for performance */
   .glass {
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(255, 255, 255, 0.92);
   }
 }
 
-/* Animations */
+/* Animations — using only transform & opacity (GPU-accelerated) */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -236,7 +235,7 @@
   background-size: 1.5em 1.5em;
 }
 
-/* Pulse animation for live elements */
+/* Pulse animation for live elements — using only transform (GPU-accelerated) */
 @keyframes gentle-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.05); }
@@ -258,18 +257,18 @@
   animation: bounceIn 0.5s ease-out;
 }
 
-/* Gold neon glowing throne */
+/* FASE 4: Gold throne glow — replaced heavy box-shadow animation with opacity-only transition */
 .throne-glow {
   box-shadow: 0 0 25px rgba(234, 179, 8, 0.4), inset 0 0 15px rgba(234, 179, 8, 0.2);
   animation: thronePulse 3s ease-in-out infinite;
 }
 
 @keyframes thronePulse {
-  0%, 100% { box-shadow: 0 0 25px rgba(234, 179, 8, 0.4), inset 0 0 15px rgba(234, 179, 8, 0.2); }
-  50% { box-shadow: 0 0 45px rgba(234, 179, 8, 0.7), inset 0 0 25px rgba(234, 179, 8, 0.4); }
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
 }
 
-/* Floating sparkle particles */
+/* FASE 4: Floating sparkle particles — limited with will-change for GPU optimization */
 @keyframes floatUp {
   0% { transform: translateY(10px) scale(0); opacity: 0; }
   50% { opacity: 1; }
@@ -280,6 +279,18 @@
   position: absolute;
   pointer-events: none;
   animation: floatUp 2.5s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
-
+/* Accessibility: Screen-reader only class */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

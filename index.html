@@ -6,16 +6,58 @@
     <meta name="theme-color" content="#10b981" />
     <meta
       name="description"
-      content="Adzan Challenge Website - Platform gamifikasi untuk latihan adzan berjamaah"
+      content="Adzan Challenge Website - Platform gamifikasi untuk latihan adzan berjamaah di masjid. Pantau poin, quiz, dan hadiah untuk anak-anak masjid."
     />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <title>Adzan Challenge Website</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://adzan-challenge.vercel.app/" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Adzan Challenge - Platform Gamifikasi Adzan" />
+    <meta property="og:description" content="Platform gamifikasi untuk latihan adzan berjamaah di masjid. Pantau poin, quiz, dan hadiah untuk anak-anak masjid." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://adzan-challenge.vercel.app/" />
+    <meta property="og:locale" content="id_ID" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Adzan Challenge - Platform Gamifikasi Adzan" />
+    <meta name="twitter:description" content="Platform gamifikasi untuk latihan adzan berjamaah di masjid" />
+
+    <!-- Font Optimization: preconnect + async load to eliminate render-blocking -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap"
+      />
+    </noscript>
+
+    <title>Adzan Challenge - Platform Gamifikasi Adzan untuk Anak Masjid</title>
   </head>
   <body>
+    <!-- Accessibility: Skip to content link -->
+    <a
+      href="#root"
+      class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:px-4 focus:py-2 focus:rounded-lg focus:shadow-lg focus:text-emerald-700 focus:font-semibold"
+    >
+      Langsung ke konten utama
+    </a>
     <noscript>Anda perlu mengaktifkan JavaScript untuk menjalankan aplikasi ini.</noscript>
-    <div id="root"></div>
+    <div id="root" role="main"></div>
     <script type="module" src="/src/frontend/index.tsx"></script>
   </body>
 </html>

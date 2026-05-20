@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Plus, Play, Eye, Trash2, ToggleLeft, ToggleRight, ChevronRight, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { BookOpen, Plus, Play, Eye, Trash2, ToggleLeft, ToggleRight, ChevronRight, CheckCircle, XCircle, Clock, Edit2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -91,10 +91,18 @@ const QuizPlayer: React.FC<{ quiz: Quiz; participantId: string; onDone: (score: 
 };
 
 // ─── Quiz Form ────────────────────────────────────────────────────────────────
-const QuizForm: React.FC<{ onSave: (quiz: Omit<Quiz, 'id' | 'createdAt'>) => void; onClose: () => void }> = ({ onSave, onClose }) => {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [questions, setQuestions] = useState<Omit<QuizQuestion, 'id'>[]>([{ text: '', options: ['', '', '', ''], correctAnswer: 0 }]);
+const QuizForm: React.FC<{
+  initialQuiz?: Quiz;
+  onSave: (quiz: Omit<Quiz, 'id' | 'createdAt'> & { id?: string }) => void;
+  onClose: () => void;
+}> = ({ initialQuiz, onSave, onClose }) => {
+  const [title, setTitle] = useState(initialQuiz?.title || '');
+  const [description, setDescription] = useState(initialQuiz?.description || '');
+  const [mode, setMode] = useState<'biasa' | 'block_blast'>(initialQuiz?.mode || 'biasa');
+  const [questions, setQuestions] = useState<Omit<QuizQuestion, 'id'>[]>(
+    initialQuiz?.questions.map(q => ({ text: q.text, options: q.options, correctAnswer: q.correctAnswer })) || 
+    [{ text: '', options: ['', '', '', ''], correctAnswer: 0 }]
+  );
 
   const addQuestion = () => setQuestions(q => [...q, { text: '', options: ['', '', '', ''], correctAnswer: 0 }]);
   const removeQuestion = (i: number) => setQuestions(q => q.filter((_, idx) => idx !== i));
@@ -106,8 +114,12 @@ const QuizForm: React.FC<{ onSave: (quiz: Omit<Quiz, 'id' | 'createdAt'>) => voi
   const handleSave = () => {
     if (!isValid) return;
     onSave({
-      title: title.trim(), description: description.trim(), isActive: true,
-      questions: questions.map((q, i) => ({ ...q, id: `q_${Date.now()}_${i}` })),
+      id: initialQuiz?.id,
+      title: title.trim(),
+      description: description.trim(),
+      isActive: initialQuiz ? initialQuiz.isActive : true,
+      questions: questions.map((q, i) => ({ ...q, id: q.id || `q_${Date.now()}_${i}` })),
+      mode
     });
     onClose();
   };
@@ -116,6 +128,39 @@ const QuizForm: React.FC<{ onSave: (quiz: Omit<Quiz, 'id' | 'createdAt'>) => voi
     <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-1">
       <Input label="Judul Quiz" placeholder="cth: Fiqih Shalat Dasar" value={title} onChange={e => setTitle(e.target.value)} />
       <Input label="Deskripsi (opsional)" placeholder="Deskripsi singkat quiz..." value={description} onChange={e => setDescription(e.target.value)} />
+      
+      <div>
+        <label className="block text-sm font-semibold text-gray-700 mb-2">Mode Quiz</label>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setMode('biasa')}
+            className={cn(
+              "p-4 rounded-xl border-2 text-left transition-all",
+              mode === 'biasa'
+                ? "border-primary-500 bg-primary-50/50 text-primary-700"
+                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+            )}
+          >
+            <p className="font-bold text-sm font-heading">Mode Biasa</p>
+            <p className="text-xs text-gray-400 mt-1">Soal kuis langsung muncul dan dijawab berurutan.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('block_blast')}
+            className={cn(
+              "p-4 rounded-xl border-2 text-left transition-all",
+              mode === 'block_blast'
+                ? "border-primary-500 bg-primary-50/50 text-primary-700"
+                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+            )}
+          >
+            <p className="font-bold text-sm font-heading">🎮 Mode Block Blast</p>
+            <p className="text-xs text-gray-400 mt-1">Main susun block terlebih dahulu, hancurkan baris untuk membuka kuis.</p>
+          </button>
+        </div>
+      </div>
+
       <div className="border-t border-gray-100 pt-4">
         {questions.map((q, qi) => (
           <div key={qi} className="bg-gray-50 rounded-xl p-4 mb-4">
@@ -147,9 +192,10 @@ const QuizForm: React.FC<{ onSave: (quiz: Omit<Quiz, 'id' | 'createdAt'>) => voi
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export const QuizPage: React.FC = () => {
-  const { quizzes, quizAttempts, participants, addQuiz, toggleQuizActive, deleteQuiz } = useApp();
+  const { quizzes, quizAttempts, participants, addQuiz, updateQuiz, toggleQuizActive, deleteQuiz } = useApp();
   const [playModal, setPlayModal] = useState<{ quiz: Quiz; participantId: string } | null>(null);
   const [addModal, setAddModal] = useState(false);
+  const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [resultModal, setResultModal] = useState<{ score: number; pts: number } | null>(null);
   const [selectedParticipant, setSelectedParticipant] = useState('');
@@ -206,6 +252,9 @@ export const QuizPage: React.FC = () => {
                 <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
                   <Button variant="outline" size="sm" className="flex-1" leftIcon={<Play className="w-3.5 h-3.5" />}
                     onClick={() => setPreviewQuiz(quiz.id)} disabled={!quiz.isActive}>Mainkan</Button>
+                  <button onClick={() => { setEditingQuiz(quiz); setAddModal(true); }} className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-primary-600" title="Edit Quiz">
+                    <Edit2 className="w-4 h-4" />
+                  </button>
                   <button onClick={() => toggleQuizActive(quiz.id)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-400">
                     {quiz.isActive ? <ToggleRight className="w-5 h-5 text-primary-500" /> : <ToggleLeft className="w-5 h-5" />}
                   </button>
@@ -293,9 +342,18 @@ export const QuizPage: React.FC = () => {
         </Modal>
       )}
 
-      {/* Add Quiz Modal */}
-      <Modal isOpen={addModal} onClose={() => setAddModal(false)} title="Buat Quiz Baru" size="xl">
-        <QuizForm onSave={addQuiz} onClose={() => setAddModal(false)} />
+      {/* Add / Edit Quiz Modal */}
+      <Modal isOpen={addModal} onClose={() => { setAddModal(false); setEditingQuiz(null); }} title={editingQuiz ? "Edit Quiz" : "Buat Quiz Baru"} size="xl">
+        <QuizForm initialQuiz={editingQuiz || undefined} onSave={(quiz) => {
+          const { id, ...quizData } = quiz;
+          if (id) {
+            updateQuiz(id, quizData);
+          } else {
+            addQuiz(quizData);
+          }
+          setAddModal(false);
+          setEditingQuiz(null);
+        }} onClose={() => { setAddModal(false); setEditingQuiz(null); }} />
       </Modal>
 
       {/* Delete Confirm */}

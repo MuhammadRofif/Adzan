@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '../../context/AppContext';
 import { Quiz } from '../../../shared/types';
 import { cn } from '../../utils/cn';
+import { BlockBlastGame } from '../../components/bocil/BlockBlastGame';
 
-// ─── Quiz Player for Bocil ───────────────────────────────────────────────────
+// ─── Quiz Player for Bocil ───────────────
 const BocilQuizPlayer: React.FC<{
   quiz: Quiz;
   participantId: string;
@@ -18,6 +19,33 @@ const BocilQuizPlayer: React.FC<{
   const [step, setStep] = useState(0);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [feedbackAnswer, setFeedbackAnswer] = useState<number | null>(null);
+
+  // Fullscreen management for the entire Quiz flow
+  const quizContainerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      if (quizContainerRef.current) {
+        quizContainerRef.current.requestFullscreen().catch((err: any) => console.error(err));
+      }
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+    }
+  };
+
+  // Block Blast Stage management
+  const [gameStage, setGameStage] = useState<'block_blast' | 'quiz_question'>(
+    quiz.mode === 'block_blast' ? 'block_blast' : 'quiz_question'
+  );
+  const [isProcessingAnswer, setIsProcessingAnswer] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -34,11 +62,11 @@ const BocilQuizPlayer: React.FC<{
     const a = [...answers]; a[step] = optIdx; setAnswers(a);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmitAnswers = async (currentAnswers: (number | null)[]) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const finalAnswers = answers.map(a => a ?? 0);
+      const finalAnswers = currentAnswers.map(a => a ?? 0);
       const res = await submitQuiz(participantId, quiz.id, finalAnswers);
       setResult(res); 
       setSubmitted(true); 
@@ -50,27 +78,57 @@ const BocilQuizPlayer: React.FC<{
     }
   };
 
+  const handleSubmit = async () => {
+    await handleSubmitAnswers(answers);
+  };
+
+  const handleAnswerWithFeedback = async (optIdx: number) => {
+    if (submitted || isProcessingAnswer) return;
+    setIsProcessingAnswer(true);
+
+    const newAnswers = [...answers];
+    newAnswers[step] = optIdx;
+    setAnswers(newAnswers);
+
+    setIsProcessingAnswer(false);
+    if (step < quiz.questions.length - 1) {
+      setStep(s => s + 1);
+      setGameStage('block_blast');
+    } else {
+      await handleSubmitAnswers(newAnswers);
+    }
+  };
+
   const allAnswered = answers.every(a => a !== null);
   const q = quiz.questions[step];
 
   if (submitted && result) {
-    const emoji = result.score >= 80 ? '🎉' : result.score >= 60 ? '👍' : '💪';
-    const message = result.score >= 80 ? 'Keren banget!' : result.score >= 60 ? 'Lumayan bagus!' : 'Ayo belajar lagi!';
+    const answeredCount = answers.filter(a => a !== null).length;
+    const isGameOver = quiz.mode === 'block_blast' && answeredCount < quiz.questions.length;
+    
+    const emoji = isGameOver ? '👾' : result.score >= 80 ? '🎉' : result.score >= 60 ? '👍' : '💪';
+    const titleText = isGameOver ? 'GAME OVER! 👾' : `Skor: ${result.score}%`;
+    const message = isGameOver 
+      ? `Grid kamu penuh! Kamu berhasil menyelesaikan ${answeredCount} dari ${quiz.questions.length} soal.`
+      : result.score >= 80 ? 'Keren banget!' : result.score >= 60 ? 'Lumayan bagus!' : 'Ayo belajar lagi!';
+
     return (
       <div className="text-center py-6">
         <div className="text-6xl mb-4 animate-bounce">{emoji}</div>
-        <h3 className="text-3xl font-extrabold text-gray-900 font-heading mb-2">Skor: {result.score}%</h3>
+        <h3 className="text-3xl font-extrabold text-gray-900 font-heading mb-2">{titleText}</h3>
         <p className="text-lg text-gray-600 mb-2">{message}</p>
         <p className="text-primary-600 font-bold text-xl mb-6">+{result.earnedPoints} poin! 🌟</p>
         <div className="bg-gray-50 rounded-2xl p-4 text-left mb-6 max-h-60 overflow-y-auto">
           {quiz.questions.map((q2, i) => {
-            const isCorrect = answers[i] === q2.correctAnswer;
+            const isAnswered = answers[i] !== null;
+            const isCorrect = isAnswered && answers[i] === q2.correctAnswer;
             return (
               <div key={i} className={cn('flex items-start gap-2 py-2 text-sm', i > 0 && 'border-t border-gray-200')}>
-                <span className="text-lg flex-shrink-0">{isCorrect ? '✅' : '❌'}</span>
+                <span className="text-lg flex-shrink-0">{!isAnswered ? '⚪' : isCorrect ? '✅' : '❌'}</span>
                 <div>
                   <p className="font-medium text-gray-700">{q2.text}</p>
-                  {!isCorrect && <p className="text-xs text-emerald-600 mt-0.5">Jawaban benar: {q2.options[q2.correctAnswer]}</p>}
+                  {!isCorrect && isAnswered && <p className="text-xs text-emerald-600 mt-0.5">Jawaban benar: {q2.options[q2.correctAnswer]}</p>}
+                  {!isAnswered && <p className="text-xs text-orange-500 mt-0.5">Belum sempat terjawab (kalah di block blast)</p>}
                 </div>
               </div>
             );
@@ -82,8 +140,33 @@ const BocilQuizPlayer: React.FC<{
   }
 
   return (
-    <div>
-      {/* Progress */}
+    <div 
+      ref={quizContainerRef} 
+      className={cn(
+        "w-full transition-colors",
+        isFullscreen ? "h-screen w-screen overflow-y-auto bg-slate-50" : ""
+      )}
+    >
+      {/* Stage 1: Block Blast mini game (if mode is enabled) */}
+      {quiz.mode === 'block_blast' && (
+        <div style={{ display: gameStage === 'block_blast' ? 'block' : 'none' }} className={isFullscreen ? "h-full w-full" : ""}>
+          <BlockBlastGame
+            onTriggerQuiz={() => setGameStage('quiz_question')}
+            onGameOver={handleSubmit}
+            activeQuestionIndex={step}
+            totalQuestions={quiz.questions.length}
+            isFullscreen={isFullscreen}
+            toggleFullscreen={toggleFullscreen}
+          />
+        </div>
+      )}
+
+      {/* Stage 2: Standard/Active Quiz Question view */}
+      <div 
+        style={{ display: quiz.mode !== 'block_blast' || gameStage === 'quiz_question' ? 'block' : 'none' }}
+        className={isFullscreen ? "p-6 sm:p-10 max-w-2xl mx-auto" : ""}
+      >
+        {/* Progress */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-bold text-primary-600">
           Soal {step + 1} / {quiz.questions.length}
@@ -111,17 +194,43 @@ const BocilQuizPlayer: React.FC<{
         {q.options.map((opt, i) => {
           const letters = ['A', 'B', 'C', 'D'];
           const isSelected = answers[step] === i;
+          
+          // Inline feedback styles
+          const isFeedbackActive = feedbackAnswer !== null;
+          const isCorrect = i === q.correctAnswer;
+          const isClickedIncorrect = isFeedbackActive && feedbackAnswer === i && !isCorrect;
+
           return (
-            <button key={i} onClick={() => handleAnswer(i)}
+            <button key={i} disabled={isFeedbackActive} onClick={() => {
+              if (quiz.mode === 'block_blast') {
+                handleAnswerWithFeedback(i);
+              } else {
+                handleAnswer(i);
+              }
+            }}
               className={cn(
                 'w-full text-left px-4 py-3.5 rounded-2xl border-2 text-sm font-medium transition-all duration-200',
-                isSelected
-                  ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-md shadow-primary-100 scale-[1.02]'
-                  : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                isFeedbackActive
+                  ? isCorrect
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-md shadow-emerald-100 scale-[1.02]'
+                    : isClickedIncorrect
+                      ? 'border-rose-500 bg-rose-50 text-rose-700 shadow-md shadow-rose-100 scale-[1.02]'
+                      : 'border-gray-100 bg-white text-gray-400 opacity-50'
+                  : isSelected
+                    ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-md shadow-primary-100 scale-[1.02]'
+                    : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
               )}>
               <span className={cn(
-                'inline-flex items-center justify-center w-7 h-7 rounded-full mr-3 text-xs font-bold',
-                isSelected ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-500'
+                'inline-flex items-center justify-center w-7 h-7 rounded-full mr-3 text-xs font-bold transition-colors',
+                isFeedbackActive
+                  ? isCorrect
+                    ? 'bg-emerald-500 text-white'
+                    : isClickedIncorrect
+                      ? 'bg-rose-500 text-white'
+                      : 'bg-gray-100 text-gray-400'
+                  : isSelected
+                    ? 'bg-primary-500 text-white'
+                    : 'bg-gray-100 text-gray-500'
               )}>{letters[i]}</span>
               {opt}
             </button>
@@ -129,22 +238,25 @@ const BocilQuizPlayer: React.FC<{
         })}
       </div>
 
-      {/* Navigation */}
-      <div className="flex gap-3">
-        {step > 0 && (
-          <button onClick={() => setStep(s => s - 1)} className="bocil-btn-secondary flex-1" disabled={isSubmitting}>
-            ⬅️ Sebelumnya
-          </button>
-        )}
-        {step < quiz.questions.length - 1 ? (
-          <button onClick={() => setStep(s => s + 1)} className="bocil-btn-primary flex-1" disabled={answers[step] === null || isSubmitting}>
-            Selanjutnya ➡️
-          </button>
-        ) : (
-          <button onClick={handleSubmit} className="bocil-btn-primary flex-1" disabled={!allAnswered || isSubmitting}>
-            {isSubmitting ? 'Mengirim... 🚀' : 'Kumpulkan! 🚀'}
-          </button>
-        )}
+      {/* Navigation (Only for normal mode - Block Blast progresses on feedback) */}
+      {quiz.mode !== 'block_blast' && (
+        <div className="flex gap-3">
+          {step > 0 && (
+            <button onClick={() => setStep(s => s - 1)} className="bocil-btn-secondary flex-1" disabled={isSubmitting}>
+              ⬅️ Sebelumnya
+            </button>
+          )}
+          {step < quiz.questions.length - 1 ? (
+            <button onClick={() => setStep(s => s + 1)} className="bocil-btn-primary flex-1" disabled={answers[step] === null || isSubmitting}>
+              Selanjutnya ➡️
+            </button>
+          ) : (
+            <button onClick={handleSubmit} className="bocil-btn-primary flex-1" disabled={!allAnswered || isSubmitting}>
+              {isSubmitting ? 'Mengirim... 🚀' : 'Kumpulkan! 🚀'}
+            </button>
+          )}
+        </div>
+      )}
       </div>
     </div>
   );
@@ -1022,14 +1134,25 @@ export const BocilQuiz: React.FC = () => {
                     </div>
                   )}
 
-                  <div className="text-4xl mb-3">
-                    {i === 0 ? '🕌' : i === 1 ? '📿' : '📚'}
+                  <div className="flex items-center justify-start gap-3 mb-3 mt-2">
+                    <div className="text-4xl">
+                      {i === 0 ? '🕌' : i === 1 ? '📿' : '📚'}
+                    </div>
+                    <div className={cn(
+                      "text-[9px] font-black px-2.5 py-1 rounded-lg border flex items-center gap-1",
+                      quiz.mode === 'block_blast' 
+                        ? "bg-indigo-50 text-indigo-600 border-indigo-200"
+                        : "bg-emerald-50 text-emerald-600 border-emerald-200"
+                    )}>
+                      <span>{quiz.mode === 'block_blast' ? '👾' : '📝'}</span>
+                      {quiz.mode === 'block_blast' ? 'MODE BLOCK BLAST' : 'MODE BIASA'}
+                    </div>
                   </div>
                   <div className="flex items-start justify-between mb-1">
-                    <h3 className="font-bold text-gray-900 font-heading text-lg leading-tight">{quiz.title}</h3>
+                    <h3 className="font-bold text-gray-900 font-heading text-lg leading-tight pr-2">{quiz.title}</h3>
                     {selectedParticipant && myTotalTries > 0 && (
-                      <span className="text-[9px] font-black bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full whitespace-nowrap">
-                        {myTotalTries}x PERCOBAAN
+                      <span className="text-[9px] font-black bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full whitespace-nowrap mt-1">
+                        {myTotalTries}x COBA
                       </span>
                     )}
                   </div>
@@ -1177,7 +1300,7 @@ export const BocilQuiz: React.FC = () => {
                           <div className="absolute inset-0 bg-yellow-400 rounded-full blur-2xl animate-pulse scale-150 opacity-35 animate-gentle-pulse" />
                           <div className="w-28 h-28 rounded-[36px] bg-gradient-to-br from-yellow-400 via-amber-500 to-yellow-600 flex items-center justify-center text-5xl font-black text-white shadow-xl relative z-10 overflow-hidden border-4 border-yellow-300">
                             {king.avatar_url ? (
-                              <img src={king.avatar_url} alt={king.nama} className="w-full h-full object-cover" />
+                              <img src={king.avatar_url} alt={king.nama} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                             ) : (
                               king.nama.charAt(0)
                             )}
@@ -1260,7 +1383,7 @@ export const BocilQuiz: React.FC = () => {
                               <div className="relative mb-3 mt-1">
                                 <div className="w-16 h-16 rounded-[22px] bg-gradient-to-br from-emerald-600/30 to-emerald-800/30 flex items-center justify-center text-2xl font-black text-emerald-200 shadow-inner relative overflow-hidden border-2 border-emerald-500/30 group-hover:border-emerald-400/50 transition-colors">
                                   {p.avatar_url ? (
-                                    <img src={p.avatar_url} alt={p.nama} className="w-full h-full object-cover" />
+                                    <img src={p.avatar_url} alt={p.nama} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                   ) : (
                                     p.nama.charAt(0)
                                   )}
