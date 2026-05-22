@@ -7,14 +7,16 @@ import { Button } from '../components/ui/Button';
 export const DAYS_OF_WEEK = ["Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu", "Minggu"];
 export const PRAYER_TIMES = ["Shubuh", "Zhuhur", "Ashar", "Magrib", "Isya"];
 
+const SHUBUH_ROTATION = ["Atha", "Hafi", "Rega"];
+
 const DEFAULT_SCHEDULE: Record<string, Record<string, string>> = {
-  "Senin": { "Shubuh": "Rega", "Zhuhur": "Radit", "Ashar": "Irwan", "Magrib": "Adriza", "Isya": "Ozi" },
+  "Senin": { "Shubuh": "Atha", "Zhuhur": "Radit", "Ashar": "Irwan", "Magrib": "Adriza", "Isya": "Ozi" },
   "Selasa": { "Shubuh": "Hafi", "Zhuhur": "Iqbal", "Ashar": "Ozi", "Magrib": "Adriza", "Isya": "Rega" },
   "Rabu": { "Shubuh": "Rega", "Zhuhur": "Adit", "Ashar": "Deden", "Magrib": "Hafi", "Isya": "Akmal" },
-  "Kamis": { "Shubuh": "Hafi", "Zhuhur": "Iqbal Adek Akmal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Rizky" },
-  "Jum'at": { "Shubuh": "Rega", "Zhuhur": "LOCKED", "Ashar": "Radit", "Magrib": "Hafi", "Isya": "Akmal" },
-  "Sabtu": { "Shubuh": "Hafi", "Zhuhur": "Irwan", "Ashar": "Deden", "Magrib": "Rega", "Isya": "Adriza" },
-  "Minggu": { "Shubuh": "Rega", "Zhuhur": "Iqbal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Hafi" }
+  "Kamis": { "Shubuh": "Atha", "Zhuhur": "Iqbal Adek Akmal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Rizky" },
+  "Jum'at": { "Shubuh": "Hafi", "Zhuhur": "LOCKED", "Ashar": "Radit", "Magrib": "Hafi", "Isya": "Akmal" },
+  "Sabtu": { "Shubuh": "Rega", "Zhuhur": "Irwan", "Ashar": "Deden", "Magrib": "Rega", "Isya": "Adriza" },
+  "Minggu": { "Shubuh": "Atha", "Zhuhur": "Iqbal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Hafi" }
 };
 
 export const SchedulePage: React.FC = () => {
@@ -22,11 +24,11 @@ export const SchedulePage: React.FC = () => {
   const [schedule, setSchedule] = useState<Record<string, Record<string, string>>>(() => {
     const saved = localStorage.getItem('bocil_adzan_schedule');
     const base = saved ? JSON.parse(saved) : DEFAULT_SCHEDULE;
-    // Ensure Shubuh is strictly locked to Rega/Hafi alternation on load for all 7 days
+    // Ensure Shubuh is strictly locked to Atha/Hafi/Rega rotation on load for all 7 days
     const DAYS = ["Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu", "Minggu"];
     DAYS.forEach((day, dayIndex) => {
       if (!base[day]) base[day] = {};
-      base[day]["Shubuh"] = dayIndex % 2 === 0 ? "Rega" : "Hafi";
+      base[day]["Shubuh"] = SHUBUH_ROTATION[dayIndex % 3];
     });
     return base;
   });
@@ -191,24 +193,30 @@ export const SchedulePage: React.FC = () => {
       return;
     }
 
-    const regaMatch = activeParticipants.find(p => p.nama.toLowerCase() === 'rega')?.nama || 'Rega';
+    const athaMatch = activeParticipants.find(p => p.nama.toLowerCase() === 'atha')?.nama || 'Atha';
     const hafiMatch = activeParticipants.find(p => p.nama.toLowerCase() === 'hafi')?.nama || 'Hafi';
+    const regaMatch = activeParticipants.find(p => p.nama.toLowerCase() === 'rega')?.nama || 'Rega';
+    const shubuhRotation = [athaMatch, hafiMatch, regaMatch];
 
-    // Get active participants other than Rega and Hafi
+    // Get active participants other than Atha, Hafi, and Rega
     const generalKids = activeParticipants
-      .filter(p => p.nama.toLowerCase() !== 'rega' && p.nama.toLowerCase() !== 'hafi')
+      .filter(p => !['atha', 'hafi', 'rega'].includes(p.nama.toLowerCase()))
       .map(p => p.nama);
 
     const newSchedule: Record<string, Record<string, string>> = {};
     
-    // First, seed monday-saturday shubuh and friday zhuhur, default others to Kosong
+    // Randomly distribute 7 Shubuh slots among Atha/Hafi/Rega (each gets at least 2, one random person gets 3)
+    const shubuhSlots: string[] = [
+      ...Array(2).fill(athaMatch),
+      ...Array(2).fill(hafiMatch),
+      ...Array(2).fill(regaMatch),
+      shubuhRotation[Math.floor(Math.random() * 3)] // 7th slot goes to a random one
+    ].sort(() => Math.random() - 0.5);
+
+    // First, seed shubuh and friday zhuhur, default others to Kosong
     DAYS_OF_WEEK.forEach((day, dayIndex) => {
       newSchedule[day] = {};
-      if (dayIndex % 2 === 0) {
-        newSchedule[day]["Shubuh"] = regaMatch;
-      } else {
-        newSchedule[day]["Shubuh"] = hafiMatch;
-      }
+      newSchedule[day]["Shubuh"] = shubuhSlots[dayIndex];
       newSchedule[day]["Zhuhur"] = "Kosong";
       newSchedule[day]["Ashar"] = "Kosong";
       newSchedule[day]["Magrib"] = "Kosong";
@@ -217,7 +225,7 @@ export const SchedulePage: React.FC = () => {
     // Lock Jum'at Zhuhur
     newSchedule["Jum'at"]["Zhuhur"] = "LOCKED";
 
-    // Build the 28 general slots allocation pool (7 days * 5 prayers = 35 total. Locked: 1 Fri Zhuhur + 6 Mon-Sat Shubuh = 28 open)
+    // Build the 28 general slots allocation pool (7 days * 5 prayers = 35 total. Locked: 1 Fri Zhuhur + 7 Shubuh = 27 open)
     const allocation: string[] = [];
     if (generalKids.length > 0) {
       const N = generalKids.length;
@@ -250,8 +258,8 @@ export const SchedulePage: React.FC = () => {
     DAYS_OF_WEEK.forEach((day, dayIndex) => {
       PRAYER_TIMES.forEach(prayer => {
         if (prayer === "Shubuh") {
-          // Strictly lock Shubuh to alternate between Rega and Hafi for all 7 days
-          newSchedule[day][prayer] = dayIndex % 2 === 0 ? regaMatch : hafiMatch;
+          // Shubuh already randomly assigned from Atha/Hafi/Rega pool
+          // Keep the pre-assigned value
         } else if (!(day === "Jum'at" && prayer === "Zhuhur")) {
           newSchedule[day][prayer] = shuffledAllocation[allocationIndex] || 'Kosong';
           allocationIndex++;
@@ -407,7 +415,7 @@ export const SchedulePage: React.FC = () => {
                       if (isShubuh) {
                         return (
                           <td key={prayer} className="px-2 py-3 text-center">
-                            <div className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-gray-100/70 text-gray-500 text-xs font-bold w-full justify-center border border-gray-200/50" title="Slot Shubuh dikunci untuk Rega / Hafi">
+                            <div className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-gray-100/70 text-gray-500 text-xs font-bold w-full justify-center border border-gray-200/50" title="Slot Shubuh dikunci untuk Atha / Hafi / Rega">
                               <Lock className="w-3.5 h-3.5 text-gray-400" />
                               <span>{name}</span>
                             </div>

@@ -149,13 +149,13 @@ export const BocilDashboard: React.FC = () => {
   const [schedule, setSchedule] = useState<Record<string, Record<string, string>>>(() => {
     const saved = localStorage.getItem("bocil_adzan_schedule");
     const DEFAULT_SCHEDULE = {
-      "Senin": { "Shubuh": "Rega", "Zhuhur": "Radit", "Ashar": "Irwan", "Magrib": "Adriza", "Isya": "Ozi" },
+      "Senin": { "Shubuh": "Atha", "Zhuhur": "Radit", "Ashar": "Irwan", "Magrib": "Adriza", "Isya": "Ozi" },
       "Selasa": { "Shubuh": "Hafi", "Zhuhur": "Iqbal", "Ashar": "Ozi", "Magrib": "Adriza", "Isya": "Rega" },
       "Rabu": { "Shubuh": "Rega", "Zhuhur": "Adit", "Ashar": "Deden", "Magrib": "Hafi", "Isya": "Akmal" },
-      "Kamis": { "Shubuh": "Hafi", "Zhuhur": "Iqbal Adek Akmal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Rizky" },
-      "Jum'at": { "Shubuh": "Rega", "Zhuhur": "LOCKED", "Ashar": "Radit", "Magrib": "Hafi", "Isya": "Akmal" },
-      "Sabtu": { "Shubuh": "Hafi", "Zhuhur": "Irwan", "Ashar": "Deden", "Magrib": "Rega", "Isya": "Adriza" },
-      "Minggu": { "Shubuh": "Rega", "Zhuhur": "Iqbal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Hafi" }
+      "Kamis": { "Shubuh": "Atha", "Zhuhur": "Iqbal Adek Akmal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Rizky" },
+      "Jum'at": { "Shubuh": "Hafi", "Zhuhur": "LOCKED", "Ashar": "Radit", "Magrib": "Hafi", "Isya": "Akmal" },
+      "Sabtu": { "Shubuh": "Rega", "Zhuhur": "Irwan", "Ashar": "Deden", "Magrib": "Rega", "Isya": "Adriza" },
+      "Minggu": { "Shubuh": "Atha", "Zhuhur": "Iqbal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Hafi" }
     };
     return saved ? JSON.parse(saved) : DEFAULT_SCHEDULE;
   });
