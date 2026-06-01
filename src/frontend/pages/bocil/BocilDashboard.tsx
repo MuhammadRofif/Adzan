@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useApp } from "../../context/AppContext";
 import { cn } from "../../utils/cn";
-import { AdzanEntry, Participant } from "../../../shared/types";
+import { AdzanEntry, Participant, PANGKAT_LEVELS, getPangkat } from "../../../shared/types";
 import { Modal } from "../../components/ui/Modal";
 import { Button } from "../../components/ui/Button";
 import { Award, Mic, CheckCircle2, BookOpen, Star, AlignCenter } from "lucide-react";
@@ -56,79 +56,6 @@ const Medal: React.FC<{ rank: number }> = ({ rank }) => {
       {rank + 1}
     </span>
   );
-};
-
-// ─── Pangkat (Rank) System ───────────────────────────────────────────────────
-const PANGKAT_LEVELS = [
-  {
-    min: 0,
-    title: "Prajurit Masjid",
-    emoji: "🪖",
-    color: "from-gray-400 to-gray-500",
-    border: "border-gray-200",
-    bg: "bg-gray-50",
-  },
-  {
-    min: 50,
-    title: "Kopral Adzan",
-    emoji: "⭐",
-    color: "from-blue-400 to-blue-600",
-    border: "border-blue-200",
-    bg: "bg-blue-50",
-  },
-  {
-    min: 100,
-    title: "Sersan Sholat",
-    emoji: "⭐⭐",
-    color: "from-teal-400 to-teal-600",
-    border: "border-teal-200",
-    bg: "bg-teal-50",
-  },
-  {
-    min: 200,
-    title: "Letnan Ibadah",
-    emoji: "🌟",
-    color: "from-emerald-400 to-emerald-600",
-    border: "border-emerald-200",
-    bg: "bg-emerald-50",
-  },
-  {
-    min: 300,
-    title: "Kapten Dakwah",
-    emoji: "🌟🌟",
-    color: "from-purple-400 to-purple-600",
-    border: "border-purple-200",
-    bg: "bg-purple-50",
-  },
-  {
-    min: 400,
-    title: "Mayor Muadzin",
-    emoji: "🏅",
-    color: "from-orange-400 to-orange-600",
-    border: "border-orange-200",
-    bg: "bg-orange-50",
-  },
-  {
-    min: 500,
-    title: "Jenderal Masjid",
-    emoji: "👑",
-    color: "from-yellow-400 to-amber-500",
-    border: "border-yellow-200",
-    bg: "bg-yellow-50",
-  },
-];
-
-const getPangkat = (totalPoints: number) => {
-  let current = PANGKAT_LEVELS[0];
-  let next = PANGKAT_LEVELS[1];
-  for (let i = PANGKAT_LEVELS.length - 1; i >= 0; i--) {
-    if (totalPoints >= PANGKAT_LEVELS[i].min) {
-      current = PANGKAT_LEVELS[i];
-      next = PANGKAT_LEVELS[i + 1] || null;
-      break;
-    }
-  }
-  return { current, next };
 };
 
 export const BocilDashboard: React.FC = () => {

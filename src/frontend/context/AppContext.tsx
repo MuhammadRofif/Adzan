@@ -17,6 +17,8 @@ import {
   ParticipantStatus,
   AttendanceEntry,
   AdzanEntry,
+  TransactionType,
+  getPangkat,
 } from "../../shared/types";
 import {
   mockRedeemPackages,
@@ -408,6 +410,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
 
   const addTransaction = useCallback(
     async (t: Omit<Transaction, "id" | "timestamp">) => {
+      // Check rank before transaction
+      const currentTotal = points[t.participantId]?.total || 0;
+      const oldRank = getPangkat(currentTotal).current;
+
       const { error } = await supabase.from("transactions").insert([
         { 
           participant_id: t.participantId,
@@ -417,9 +423,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
           admin_id: t.adminId
         }
       ]);
-      if (error) console.error("Error adding transaction:", error);
+      
+      if (error) {
+        console.error("Error adding transaction:", error);
+        return;
+      }
+
+      // Check for rank up and add bonus
+      if (t.points > 0 && t.type !== 'adjustment' && t.type !== 'redeem') {
+        const newTotal = currentTotal + t.points;
+        const newRank = getPangkat(newTotal).current;
+        
+        if (newRank.min > oldRank.min && newRank.bonus && newRank.bonus > 0) {
+          await supabase.from("transactions").insert([{
+            participant_id: t.participantId,
+            type: "adjustment",
+            points: newRank.bonus,
+            reason: `Bonus Naik Pangkat: ${newRank.title} ${newRank.emoji}`,
+            admin_id: "system"
+          }]);
+          showToast(`🌟 Naik Pangkat ke ${newRank.title}! Bonus +${newRank.bonus} Poin!`);
+        }
+      }
     },
-    [],
+    [points, showToast],
   );
 
   const addParticipant = useCallback(
