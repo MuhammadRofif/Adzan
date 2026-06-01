@@ -150,10 +150,10 @@ export const Tracking: React.FC = () => {
       )}
 
       {/* Modals */}
-      <Modal isOpen={attendanceModal} onClose={() => setAttendanceModal(false)} title="Catat Latihan & Sikap Bagus" size="sm"
+      <Modal isOpen={attendanceModal} onClose={() => { setAttendanceModal(false); setAttParticipant(''); }} title="Catat Latihan & Sikap Bagus" size="sm"
         footer={<>
           <Button onClick={() => { if (attParticipant) { recordAttendance(attParticipant, attPrayer); setAttendanceModal(false); setAttParticipant(''); } }} className="w-full sm:w-auto sm:ml-3" disabled={!attParticipant}>Simpan</Button>
-          <Button variant="ghost" onClick={() => setAttendanceModal(false)} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
+          <Button variant="ghost" onClick={() => { setAttendanceModal(false); setAttParticipant(''); }} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
         </>}
       >
         <div className="space-y-4">
@@ -167,7 +167,7 @@ export const Tracking: React.FC = () => {
         </div>
       </Modal>
 
-      <Modal isOpen={adzanModal} onClose={() => setAdzanModal(false)} title="Catat Peran / Tugas Masjid"
+      <Modal isOpen={adzanModal} onClose={() => { setAdzanModal(false); setAdzParticipant(''); setAdzAttitude('Bagus'); }} title="Catat Peran / Tugas Masjid"
         footer={<>
           <Button onClick={() => { 
             if (adzParticipant) { 
@@ -178,9 +178,10 @@ export const Tracking: React.FC = () => {
               }
               setAdzanModal(false); 
               setAdzParticipant(''); 
+              setAdzAttitude('Bagus');
             } 
           }} className="w-full sm:w-auto sm:ml-3" disabled={!adzParticipant}>Simpan</Button>
-          <Button variant="ghost" onClick={() => setAdzanModal(false)} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
+          <Button variant="ghost" onClick={() => { setAdzanModal(false); setAdzParticipant(''); setAdzAttitude('Bagus'); }} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
         </>}
       >
         <div className="space-y-4">

@@ -151,10 +151,10 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* Attendance Modal */}
-      <Modal isOpen={attendanceModal} onClose={() => setAttendanceModal(false)} title="Catat Latihan & Sikap Bagus"
+      <Modal isOpen={attendanceModal} onClose={() => { setAttendanceModal(false); setAttParticipant(''); }} title="Catat Latihan & Sikap Bagus"
         footer={<>
           <Button onClick={() => { if (attParticipant) { recordAttendance(attParticipant, ''); setAttendanceModal(false); setAttParticipant(''); } }} className="w-full sm:w-auto sm:ml-3" disabled={!attParticipant}>Simpan</Button>
-          <Button variant="ghost" onClick={() => setAttendanceModal(false)} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
+          <Button variant="ghost" onClick={() => { setAttendanceModal(false); setAttParticipant(''); }} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
         </>}
       >
         <div className="space-y-4">
@@ -166,10 +166,10 @@ export const Dashboard: React.FC = () => {
       </Modal>
 
       {/* Adzan Modal */}
-      <Modal isOpen={adzanModal} onClose={() => setAdzanModal(false)} title="Catat Adzan"
+      <Modal isOpen={adzanModal} onClose={() => { setAdzanModal(false); setAdzParticipant(''); setAdzAttitude('Bagus'); }} title="Catat Adzan"
         footer={<>
-          <Button onClick={() => { if (adzParticipant) { recordAdzan(adzParticipant, '', adzAttitude); setAdzanModal(false); setAdzParticipant(''); } }} className="w-full sm:w-auto sm:ml-3" disabled={!adzParticipant}>Simpan (+10 Poin)</Button>
-          <Button variant="ghost" onClick={() => setAdzanModal(false)} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
+          <Button onClick={() => { if (adzParticipant) { recordAdzan(adzParticipant, '', adzAttitude); setAdzanModal(false); setAdzParticipant(''); setAdzAttitude('Bagus'); } }} className="w-full sm:w-auto sm:ml-3" disabled={!adzParticipant}>Simpan (+10 Poin)</Button>
+          <Button variant="ghost" onClick={() => { setAdzanModal(false); setAdzParticipant(''); setAdzAttitude('Bagus'); }} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
         </>}
       >
         <div className="space-y-4">

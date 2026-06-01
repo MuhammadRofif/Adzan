@@ -81,6 +81,8 @@ export const Participants: React.FC = () => {
     const action = searchParams.get('action');
     if (action === 'attendance' || action === 'adzan' || action === 'sholawat_iqomah') {
       setMultiType(action as any);
+      setSelectedIds([]);
+      setAttAttitude('Bagus');
       setMultiModal(true);
       // Clear param after opening
       const newParams = new URLSearchParams(searchParams);
@@ -123,13 +125,13 @@ export const Participants: React.FC = () => {
         subtitle={`${participants.length} peserta terdaftar`}
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" leftIcon={<CheckCircle2 className="w-4 h-4" />} onClick={() => { setMultiType('attendance'); setSelectedIds([]); setMultiModal(true); }}>
+            <Button variant="secondary" leftIcon={<CheckCircle2 className="w-4 h-4" />} onClick={() => { setMultiType('attendance'); setSelectedIds([]); setAttAttitude('Bagus'); setMultiModal(true); }}>
               Absen Latihan
             </Button>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white" leftIcon={<span className="text-sm">📿</span>} onClick={() => { setMultiType('sholawat_iqomah'); setSelectedIds([]); setMultiModal(true); }}>
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white" leftIcon={<span className="text-sm">📿</span>} onClick={() => { setMultiType('sholawat_iqomah'); setSelectedIds([]); setAttAttitude('Bagus'); setMultiModal(true); }}>
               Absen Sholawat + Iqomah
             </Button>
-            <Button variant="primary" leftIcon={<Mic className="w-4 h-4" />} onClick={() => { setMultiType('adzan'); setSelectedIds([]); setMultiModal(true); }}>
+            <Button variant="primary" leftIcon={<Mic className="w-4 h-4" />} onClick={() => { setMultiType('adzan'); setSelectedIds([]); setAttAttitude('Bagus'); setMultiModal(true); }}>
               Absen Adzan
             </Button>
             <Button variant="ghost" className="bg-gray-100" leftIcon={<UserPlus className="w-4 h-4" />} onClick={() => setAddModal(true)}>
@@ -254,7 +256,7 @@ export const Participants: React.FC = () => {
       )}
 
       {/* Multi Select Modal */}
-      <Modal isOpen={multiModal} onClose={() => setMultiModal(false)} 
+      <Modal isOpen={multiModal} onClose={() => { setMultiModal(false); setSelectedIds([]); setAttAttitude('Bagus'); }} 
         title={multiType === 'attendance' ? 'Absen Massal Latihan' : multiType === 'sholawat_iqomah' ? 'Absen Massal Sholawat + Iqomah' : 'Absen Massal Adzan'} 
         size="lg"
         footer={<>
@@ -268,11 +270,13 @@ export const Participants: React.FC = () => {
                 recordAdzan(id, '', 'Bagus');
               }
             });
+            setSelectedIds([]);
+            setAttAttitude('Bagus');
             setMultiModal(false);
           }} className="w-full sm:w-auto sm:ml-3" disabled={selectedIds.length === 0}>
             Simpan {selectedIds.length} Peserta
           </Button>
-          <Button variant="ghost" onClick={() => setMultiModal(false)} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
+          <Button variant="ghost" onClick={() => { setMultiModal(false); setSelectedIds([]); setAttAttitude('Bagus'); }} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
         </>}
       >
         <div className="space-y-4">

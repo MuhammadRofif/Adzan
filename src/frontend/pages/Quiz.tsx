@@ -99,8 +99,8 @@ const QuizForm: React.FC<{
   const [title, setTitle] = useState(initialQuiz?.title || '');
   const [description, setDescription] = useState(initialQuiz?.description || '');
   const [mode, setMode] = useState<'biasa' | 'block_blast'>(initialQuiz?.mode || 'biasa');
-  const [questions, setQuestions] = useState<Omit<QuizQuestion, 'id'>[]>(
-    initialQuiz?.questions.map(q => ({ text: q.text, options: q.options, correctAnswer: q.correctAnswer })) || 
+  const [questions, setQuestions] = useState<(Omit<QuizQuestion, 'id'> & { id?: string })[]>(
+    initialQuiz?.questions.map(q => ({ id: q.id, text: q.text, options: q.options, correctAnswer: q.correctAnswer })) || 
     [{ text: '', options: ['', '', '', ''], correctAnswer: 0 }]
   );
 
@@ -118,7 +118,7 @@ const QuizForm: React.FC<{
       title: title.trim(),
       description: description.trim(),
       isActive: initialQuiz ? initialQuiz.isActive : true,
-      questions: questions.map((q, i) => ({ ...q, id: q.id || `q_${Date.now()}_${i}` })),
+      questions: questions.map((q, i) => ({ ...q, id: q.id || `q_${Date.now()}_${i}` }) as QuizQuestion),
       mode
     });
     onClose();
