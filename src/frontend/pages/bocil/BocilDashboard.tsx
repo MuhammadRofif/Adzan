@@ -132,7 +132,7 @@ const getPangkat = (totalPoints: number) => {
 };
 
 export const BocilDashboard: React.FC = () => {
-  const { participants, points, adzanLog, attendanceLog, quizAttempts } =
+  const { participants, points, adzanLog, attendanceLog, quizAttempts, schedule } =
     useApp();
   const [selectedUser, setSelectedUser] = useState<string | null>(() =>
     localStorage.getItem("bocil_id"),
@@ -146,34 +146,6 @@ export const BocilDashboard: React.FC = () => {
     return days[todayIndex];
   });
 
-  const [schedule, setSchedule] = useState<Record<string, Record<string, string>>>(() => {
-    const saved = localStorage.getItem("bocil_adzan_schedule");
-    const DEFAULT_SCHEDULE = {
-      "Senin": { "Shubuh": "Atha", "Zhuhur": "Radit", "Ashar": "Irwan", "Magrib": "Adriza", "Isya": "Ozi" },
-      "Selasa": { "Shubuh": "Hafi", "Zhuhur": "Iqbal", "Ashar": "Ozi", "Magrib": "Adriza", "Isya": "Rega" },
-      "Rabu": { "Shubuh": "Rega", "Zhuhur": "Adit", "Ashar": "Deden", "Magrib": "Hafi", "Isya": "Akmal" },
-      "Kamis": { "Shubuh": "Atha", "Zhuhur": "Iqbal Adek Akmal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Rizky" },
-      "Jum'at": { "Shubuh": "Hafi", "Zhuhur": "LOCKED", "Ashar": "Radit", "Magrib": "Hafi", "Isya": "Akmal" },
-      "Sabtu": { "Shubuh": "Rega", "Zhuhur": "Irwan", "Ashar": "Deden", "Magrib": "Rega", "Isya": "Adriza" },
-      "Minggu": { "Shubuh": "Atha", "Zhuhur": "Iqbal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Hafi" }
-    };
-    return saved ? JSON.parse(saved) : DEFAULT_SCHEDULE;
-  });
-
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const saved = localStorage.getItem("bocil_adzan_schedule");
-      if (saved) {
-        setSchedule(JSON.parse(saved));
-      }
-    };
-    window.addEventListener("storage", handleStorageChange);
-    const interval = setInterval(handleStorageChange, 3000);
-    return () => {
-      window.removeEventListener("storage", handleStorageChange);
-      clearInterval(interval);
-    };
-  }, []);
 
   const myParticipant = useMemo(() => {
     return selectedUser ? participants.find(p => p.id === selectedUser) : null;

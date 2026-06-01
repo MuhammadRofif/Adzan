@@ -20,18 +20,8 @@ const DEFAULT_SCHEDULE: Record<string, Record<string, string>> = {
 };
 
 export const SchedulePage: React.FC = () => {
-  const { participants, showToast } = useApp();
-  const [schedule, setSchedule] = useState<Record<string, Record<string, string>>>(() => {
-    const saved = localStorage.getItem('bocil_adzan_schedule');
-    const base = saved ? JSON.parse(saved) : DEFAULT_SCHEDULE;
-    // Ensure Shubuh is strictly locked to Atha/Hafi/Rega rotation on load for all 7 days
-    const DAYS = ["Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu", "Minggu"];
-    DAYS.forEach((day, dayIndex) => {
-      if (!base[day]) base[day] = {};
-      base[day]["Shubuh"] = SHUBUH_ROTATION[dayIndex % 3];
-    });
-    return base;
-  });
+  const { participants, showToast, schedule, updateSchedule: setSchedule } = useApp();
+
 
   const [editingSlot, setEditingSlot] = useState<{ day: string; prayer: string } | null>(null);
 
@@ -131,10 +121,6 @@ export const SchedulePage: React.FC = () => {
     window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
   };
 
-  // Save schedule whenever it changes
-  useEffect(() => {
-    localStorage.setItem('bocil_adzan_schedule', JSON.stringify(schedule));
-  }, [schedule]);
 
   // Find active participants from AppContext
   const activeParticipants = participants.filter(p => p.status === 'aktif');

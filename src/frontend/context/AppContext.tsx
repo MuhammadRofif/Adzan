@@ -102,6 +102,10 @@ interface AppContextType {
 
   // Migration
   seedDatabase: () => Promise<void>;
+
+  // Schedule
+  schedule: Record<string, Record<string, string>>;
+  updateSchedule: (newSchedule: Record<string, Record<string, string>> | ((prev: Record<string, Record<string, string>>) => Record<string, Record<string, string>>)) => void;
 }
 
 type PointValue = {
@@ -139,9 +143,40 @@ const emptyPointValue = (): PointValue => ({
 // ─── Context ──────────────────────────────────────────────────────────────────────
 const AppContext = createContext<AppContextType | null>(null);
 
+const DEFAULT_SCHEDULE: Record<string, Record<string, string>> = {
+  "Senin": { "Shubuh": "Atha", "Zhuhur": "Radit", "Ashar": "Irwan", "Magrib": "Adriza", "Isya": "Ozi" },
+  "Selasa": { "Shubuh": "Hafi", "Zhuhur": "Iqbal", "Ashar": "Ozi", "Magrib": "Adriza", "Isya": "Rega" },
+  "Rabu": { "Shubuh": "Rega", "Zhuhur": "Adit", "Ashar": "Deden", "Magrib": "Hafi", "Isya": "Akmal" },
+  "Kamis": { "Shubuh": "Atha", "Zhuhur": "Iqbal Adek Akmal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Rizky" },
+  "Jum'at": { "Shubuh": "Hafi", "Zhuhur": "LOCKED", "Ashar": "Radit", "Magrib": "Hafi", "Isya": "Akmal" },
+  "Sabtu": { "Shubuh": "Rega", "Zhuhur": "Irwan", "Ashar": "Deden", "Magrib": "Rega", "Isya": "Adriza" },
+  "Minggu": { "Shubuh": "Atha", "Zhuhur": "Iqbal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Hafi" }
+};
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
+  const [schedule, setScheduleState] = useState<Record<string, Record<string, string>>>(() => {
+    const saved = localStorage.getItem('bocil_adzan_schedule');
+    const base = saved ? JSON.parse(saved) : DEFAULT_SCHEDULE;
+    const SHUBUH_ROTATION = ["Atha", "Hafi", "Rega"];
+    const DAYS = ["Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu", "Minggu"];
+    DAYS.forEach((day, dayIndex) => {
+      if (!base[day]) base[day] = {};
+      if (!base[day]["Shubuh"] || base[day]["Shubuh"] === "Kosong") {
+        base[day]["Shubuh"] = SHUBUH_ROTATION[dayIndex % 3];
+      }
+    });
+    return base;
+  });
+
+  const updateSchedule = useCallback((newSchedule: Record<string, Record<string, string>> | ((prev: Record<string, Record<string, string>>) => Record<string, Record<string, string>>)) => {
+    setScheduleState(prev => {
+      const updated = typeof newSchedule === 'function' ? newSchedule(prev) : newSchedule;
+      localStorage.setItem('bocil_adzan_schedule', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
   const [isLoading, setIsLoading] = useState(true);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [points, setPoints] = useState<Record<string, PointValue>>({});
@@ -873,6 +908,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     seedDatabase,
     uploadAvatar,
     updateParticipantAvatar,
+    schedule,
+    updateSchedule,
   }), [
     participants, addParticipant, updateParticipantStatus, points,
     transactions, addTransaction, attendanceLog, recordAttendance,
@@ -880,7 +917,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     redeemHistory, requestRedeem, processRedeem, quizzes, quizAttempts,
     submitQuiz, addQuiz, updateQuiz, toggleQuizActive, deleteQuiz,
     budgetStatus, toast, showToast, isLoading, quickAbsen, setQuickAbsen,
-    seedDatabase, uploadAvatar, updateParticipantAvatar,
+    seedDatabase, uploadAvatar, updateParticipantAvatar, schedule, updateSchedule,
   ]);
 
   return (
