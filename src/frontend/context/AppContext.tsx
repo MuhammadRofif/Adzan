@@ -180,7 +180,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       return updated;
     });
   }, []);
-  const loadGenRef = useRef(0);
+  const isLoadingDataRef = useRef(false); // mutex: only 1 loadAllData at a time
+  const pendingLoadRef = useRef(false);   // flag: another load requested while busy
   const [isLoading, setIsLoading] = useState(true);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [points, setPoints] = useState<Record<string, PointValue>>({});
@@ -204,8 +205,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
 
   // ─── Initial Load ───────────────────────────────────────────────────────────
   const loadAllData = useCallback(async () => {
-    // Increment generation — any older in-flight call will be discarded
-    const gen = ++loadGenRef.current;
+    // Mutex: kalau sedang load, tandai pending dan keluar
+    if (isLoadingDataRef.current) {
+      pendingLoadRef.current = true;
+      return;
+    }
+    isLoadingDataRef.current = true;
+    pendingLoadRef.current = false;
     setIsLoading(true);
     try {
       const [
@@ -219,14 +225,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         { data: qaData },
         { data: bData },
       ] = await Promise.all([
-        supabase.from("participants").select("*").order("nama"),
-        supabase.from("transactions").select("*").order("timestamp", { ascending: false }),
-        supabase.from("attendance_log").select("*").order("date", { ascending: false }),
-        supabase.from("adzan_log").select("*").order("date", { ascending: false }),
-        supabase.from("redeem_packages").select("*").order("points_required"),
-        supabase.from("redeem_history").select("*").order("requested_at", { ascending: false }),
-        supabase.from("quizzes").select("*").order("created_at", { ascending: false }),
-        supabase.from("quiz_attempts").select("*").order("completed_at", { ascending: false }),
+        supabase.from("participants").select("*").order("nama").limit(500),
+        supabase.from("transactions").select("*").order("timestamp", { ascending: false }).limit(10000), // PENTING: semua transaksi harus terbaca untuk kalkulasi poin yang benar
+        supabase.from("attendance_log").select("*").order("date", { ascending: false }).limit(5000),
+        supabase.from("adzan_log").select("*").order("date", { ascending: false }).limit(5000),
+        supabase.from("redeem_packages").select("*").order("points_required").limit(100),
+        supabase.from("redeem_history").select("*").order("requested_at", { ascending: false }).limit(1000),
+        supabase.from("quizzes").select("*").order("created_at", { ascending: false }).limit(200),
+        supabase.from("quiz_attempts").select("*").order("completed_at", { ascending: false }).limit(5000),
         supabase.from("budget_settings").select("*").limit(1),
       ]);
 
@@ -309,8 +315,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         completedAt: new Date(qa.completed_at)
       }));
 
-      // If a newer load has started, discard this stale result
-      if (gen !== loadGenRef.current) return;
 
       setParticipants(mappedParticipants);
       setTransactions(mappedTransactions);
@@ -334,35 +338,58 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         })));
       }
 
-      // Aggregating points
+      // ─── Kalkulasi Ulang Poin dari Tabel Sumber (bukan dari transactions) ───
+      // Ini menghindari duplikat/error akibat bug lama di tabel transactions.
       const pointMap: Record<string, PointValue> = {};
       mappedParticipants.forEach((p: any) => { pointMap[p.id] = emptyPointValue(); });
-      
-      mappedTransactions.forEach((t: any) => {
-        if (!pointMap[t.participantId]) pointMap[t.participantId] = emptyPointValue();
-        const p = pointMap[t.participantId];
-        if (t.type === 'attendance') p.attendance += t.points;
-        if (t.type === 'adzan') p.adzan += t.points;
-        if (t.type === 'quiz') p.quiz += t.points;
-        p.total += t.points;
-      });
 
-      mappedAttendance.forEach((a: any) => {
-        if (pointMap[a.participantId]) pointMap[a.participantId].attendanceCount++;
-      });
-
+      // 1. Hitung dari adzan_log (Adzan +10, Sholawat+Iqomah +8)
       mappedAdzan.forEach((a: any) => {
-        if (pointMap[a.participantId]) {
-          if (a.adzanPoints === 8) {
-            pointMap[a.participantId].sholawatIqomahCount++;
-          } else {
-            pointMap[a.participantId].adzanCount++;
-          }
+        const key = String(a.participantId);
+        if (!pointMap[key]) pointMap[key] = emptyPointValue();
+        pointMap[key].adzan += a.total;
+        pointMap[key].total += a.total;
+        if (a.adzanPoints === 8) {
+          pointMap[key].sholawatIqomahCount++;
+        } else {
+          pointMap[key].adzanCount++;
         }
       });
 
+      // 2. Hitung dari attendance_log (Latihan, poin sesuai sikap)
+      mappedAttendance.forEach((a: any) => {
+        const key = String(a.participantId);
+        if (!pointMap[key]) pointMap[key] = emptyPointValue();
+        pointMap[key].attendance += a.points;
+        pointMap[key].total += a.points;
+        pointMap[key].attendanceCount++;
+      });
+
+      // 3. Hitung dari quiz_attempts
       mappedQuizAttempts.forEach((qa: any) => {
-        if (pointMap[qa.participantId]) pointMap[qa.participantId].quizCount++;
+        const key = String(qa.participantId);
+        if (!pointMap[key]) pointMap[key] = emptyPointValue();
+        pointMap[key].quiz += qa.earnedPoints || 0;
+        pointMap[key].total += qa.earnedPoints || 0;
+        pointMap[key].quizCount++;
+      });
+
+      // 4. Tambahkan bonus naik pangkat (type='adjustment') dari transactions
+      mappedTransactions.forEach((t: any) => {
+        if (t.type === 'adjustment') {
+          const key = String(t.participantId);
+          if (!pointMap[key]) pointMap[key] = emptyPointValue();
+          pointMap[key].total += t.points;
+        }
+      });
+
+      // 5. Kurangi poin dari redeem yang DISETUJUI (approved)
+      mappedRedeemHistory.forEach((r: any) => {
+        if (r.status === 'approved') {
+          const key = String(r.participantId);
+          if (!pointMap[key]) pointMap[key] = emptyPointValue();
+          pointMap[key].total -= r.pointsSpent;
+        }
       });
 
       setPoints(pointMap);
@@ -387,6 +414,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       console.error("Error loading data from Supabase:", error);
     } finally {
       setIsLoading(false);
+      isLoadingDataRef.current = false;
+      // Kalau ada yang antri saat kita sibuk, langsung jalankan sekarang
+      if (pendingLoadRef.current) {
+        pendingLoadRef.current = false;
+        loadAllData();
+      }
     }
   }, []);
 
