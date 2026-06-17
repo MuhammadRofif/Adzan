@@ -59,7 +59,7 @@ const Medal: React.FC<{ rank: number }> = ({ rank }) => {
 };
 
 export const BocilDashboard: React.FC = () => {
-  const { participants, points, adzanLog, attendanceLog, quizAttempts, schedule } =
+  const { participants, points, adzanLog, attendanceLog, quizAttempts, schedule, transactions } =
     useApp();
   const [selectedUser, setSelectedUser] = useState<string | null>(() =>
     localStorage.getItem("bocil_id"),
@@ -75,7 +75,7 @@ export const BocilDashboard: React.FC = () => {
 
 
   const myParticipant = useMemo(() => {
-    return selectedUser ? participants.find(p => p.id === selectedUser) : null;
+    return selectedUser ? participants.find(p => String(p.id) === String(selectedUser)) : null;
   }, [selectedUser, participants]);
 
   const myName = myParticipant ? myParticipant.nama : '';
@@ -166,18 +166,41 @@ export const BocilDashboard: React.FC = () => {
 
   // Gabungkan adzan + latihan, sort terbaru dulu, ambil 10
   const recentActivity = useMemo(() => {
-    const getTime = (item: any) => {
-      if (item.createdAt) return item.createdAt.getTime();
-      return new Date(item.date).getTime();
+    const getPreciseTime = (item: any, type: string) => {
+      if (item.createdAt) {
+        return new Date(item.createdAt).getTime();
+      }
+      // Find transaction of same participant, type, and matching prayer time in reason
+      const tx = transactions.find(t => 
+        String(t.participantId) === String(item.participantId) &&
+        t.type === type &&
+        t.reason.toLowerCase().includes(item.prayerTime?.toLowerCase() || '')
+      );
+      return tx ? new Date(tx.timestamp).getTime() : new Date(item.date).getTime();
     };
 
-    const adzanItems = adzanLog.map(a => ({ ...a, _type: 'adzan' as const }));
-    const attendItems = attendanceLog.map(a => ({ ...a, _type: 'latihan' as const }));
+    let filteredAdzan = adzanLog;
+    let filteredAttendance = attendanceLog;
+
+    if (selectedUser) {
+      filteredAdzan = adzanLog.filter(a => String(a.participantId) === String(selectedUser));
+      filteredAttendance = attendanceLog.filter(a => String(a.participantId) === String(selectedUser));
+    }
+
+    const adzanItems = filteredAdzan.map(a => {
+      const time = getPreciseTime(a, 'adzan');
+      return { ...a, _type: 'adzan' as const, _time: time };
+    });
+
+    const attendItems = filteredAttendance.map(a => {
+      const time = getPreciseTime(a, 'attendance');
+      return { ...a, _type: 'latihan' as const, _time: time };
+    });
 
     return [...adzanItems, ...attendItems]
-      .sort((a, b) => getTime(b) - getTime(a))
+      .sort((a, b) => b._time - a._time)
       .slice(0, 10);
-  }, [adzanLog, attendanceLog]);
+  }, [adzanLog, attendanceLog, transactions, selectedUser]);
 
   const neighboringFriends = useMemo(() => {
     if (!viewParticipant) return [];
@@ -1247,11 +1270,12 @@ export const BocilDashboard: React.FC = () => {
                 const isAdzan = !isLatihan && (item as any).adzanPoints === 10;
                 const isSholawat = !isLatihan && (item as any).adzanPoints === 8;
 
-                const timeLabel = item.createdAt
-                  ? item.createdAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+                const createdDate = item.createdAt ? new Date(item.createdAt) : null;
+                const timeLabel = createdDate
+                  ? createdDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
                   : null;
-                const dateLabel = item.createdAt
-                  ? item.createdAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+                const dateLabel = createdDate
+                  ? createdDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
                   : item.date;
 
                 const pts = isLatihan ? (item as any).points : (item as any).total;
@@ -1265,16 +1289,38 @@ export const BocilDashboard: React.FC = () => {
                       ? 'bg-yellow-500'
                       : 'bg-red-500';
 
+                const participant = participants.find(p => String(p.id) === String(item.participantId));
+                const avatarUrl = participant?.avatar_url;
+                const hasAvatar = !!avatarUrl;
+
+                const avatarBorder = isLatihan
+                  ? 'border-blue-500'
+                  : (item as any).attitude === 'Bagus'
+                    ? 'border-emerald-500'
+                    : (item as any).attitude === 'Cukup Bagus'
+                      ? 'border-yellow-500'
+                      : 'border-red-500';
+
                 return (
                   <div
                     key={`${item._type}-${item.id}`}
                     className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100"
                   >
                     <div className={cn(
-                      "w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-sm flex-shrink-0",
-                      avatarBg
+                      "w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-sm flex-shrink-0 overflow-hidden",
+                      hasAvatar ? cn("border-2", avatarBorder) : avatarBg
                     )}>
-                      {item.participantName.charAt(0)}
+                      {hasAvatar ? (
+                        <img
+                          src={avatarUrl}
+                          alt={item.participantName}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ) : (
+                        item.participantName.charAt(0)
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-gray-800 truncate">
@@ -1317,6 +1363,54 @@ export const BocilDashboard: React.FC = () => {
                 "Jika manusia tahu pahala adzan, mereka akan berebut sampai
                 mengundi untuk melakukannya." (HR. Bukhari & Muslim)
               </p>
+            </div>
+          </div>
+
+          {/* Keterangan Warna Avatar Card */}
+          <div className="bocil-card bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+            <h3 className="font-bold text-gray-900 text-sm mb-3 flex items-center gap-2">
+              🎨 Panduan Warna Avatar
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-100 text-gray-400 font-bold">
+                    <th className="pb-2 font-semibold">Item</th>
+                    <th className="pb-2 font-semibold">Tampilan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 text-gray-700">
+                  <tr>
+                    <td className="py-2.5 font-bold flex items-center gap-1">📢 Adzan</td>
+                    <td className="py-2.5">
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="px-1.5 py-0.5 rounded-md bg-emerald-500 text-white font-black text-[9px]">Hijau</span>
+                        <span className="px-1.5 py-0.5 rounded-md bg-yellow-500 text-white font-black text-[9px]">Kuning</span>
+                        <span className="px-1.5 py-0.5 rounded-md bg-red-500 text-white font-black text-[9px]">Merah</span>
+                        <span className="text-[10px] text-gray-500 block sm:inline mt-0.5 sm:mt-0 font-medium">(Sesuai Sikap)</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 font-bold flex items-center gap-1">📿 Sholawat + Iqomah</td>
+                    <td className="py-2.5">
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="px-1.5 py-0.5 rounded-md bg-emerald-500 text-white font-black text-[9px]">Hijau</span>
+                        <span className="px-1.5 py-0.5 rounded-md bg-yellow-500 text-white font-black text-[9px]">Kuning</span>
+                        <span className="px-1.5 py-0.5 rounded-md bg-red-500 text-white font-black text-[9px]">Merah</span>
+                        <span className="text-[10px] text-gray-500 block sm:inline mt-0.5 sm:mt-0 font-medium">(Sesuai Sikap)</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 font-bold flex items-center gap-1">⭐ Latihan</td>
+                    <td className="py-2.5">
+                      <span className="px-1.5 py-0.5 rounded-md bg-blue-500 text-white font-black text-[9px]">Biru</span>
+                      <span className="text-[10px] text-gray-500 ml-1 font-medium">(Beda dengan adzan)</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
