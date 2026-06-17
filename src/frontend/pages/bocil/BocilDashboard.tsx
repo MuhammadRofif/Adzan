@@ -165,7 +165,14 @@ export const BocilDashboard: React.FC = () => {
   }, [myStats]);
 
   const recentAdzan = useMemo(() => {
-    return adzanLog.slice(0, 8);
+    return [...adzanLog]
+      .sort((a, b) => {
+        // Sort by createdAt if available, otherwise fallback to date string
+        const aTime = a.createdAt ? a.createdAt.getTime() : new Date(a.date).getTime();
+        const bTime = b.createdAt ? b.createdAt.getTime() : new Date(b.date).getTime();
+        return bTime - aTime;
+      })
+      .slice(0, 10);
   }, [adzanLog]);
 
   const neighboringFriends = useMemo(() => {
@@ -1231,14 +1238,22 @@ export const BocilDashboard: React.FC = () => {
               <h2 className="bocil-card-title">🎤 Adzan Terbaru</h2>
             </div>
             <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
-              {recentAdzan.map((a, i) => (
+              {recentAdzan.map((a, i) => {
+                const isAdzan = a.adzanPoints === 10;
+                const timeLabel = a.createdAt
+                  ? a.createdAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+                  : null;
+                const dateLabel = a.createdAt
+                  ? a.createdAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+                  : a.date;
+                return (
                 <div
                   key={a.id}
                   className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100"
                 >
                   <div
                     className={cn(
-                      "w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-sm",
+                      "w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-sm flex-shrink-0",
                       a.attitude === "Bagus"
                         ? "bg-emerald-500"
                         : a.attitude === "Cukup Bagus"
@@ -1252,15 +1267,24 @@ export const BocilDashboard: React.FC = () => {
                     <p className="text-xs font-bold text-gray-800 truncate">
                       {a.participantName}
                     </p>
-                    <p className="text-[10px] text-gray-400 uppercase font-black">
-                      {a.prayerTime}
+                    <p className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                      <span>{isAdzan ? '📢' : '📿'}</span>
+                      <span className="uppercase">{a.prayerTime}</span>
+                      <span className="text-gray-200">•</span>
+                      <span className="text-[9px]">{isAdzan ? 'Adzan' : 'Sholawat+Iqomah'}</span>
                     </p>
                   </div>
-                  <span className="text-[10px] font-black text-primary-600 bg-primary-50 px-2 py-1 rounded-lg">
-                    +{a.total}
-                  </span>
+                  <div className="text-right flex-shrink-0">
+                    <span className="text-[10px] font-black text-primary-600 bg-primary-50 px-2 py-1 rounded-lg block">+{a.total}</span>
+                    {timeLabel ? (
+                      <span className="text-[9px] text-gray-300 font-medium block mt-0.5">{timeLabel}</span>
+                    ) : (
+                      <span className="text-[9px] text-gray-300 font-medium block mt-0.5">{dateLabel}</span>
+                    )}
+                  </div>
                 </div>
-              ))}
+              );
+              })}
               {recentAdzan.length === 0 && (
                 <div className="text-center py-12">
                   <span className="text-4xl block mb-2">🎤</span>

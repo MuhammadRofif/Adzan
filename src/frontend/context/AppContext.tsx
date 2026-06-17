@@ -267,7 +267,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         attitudePoints: a.attitude_points,
         adzanPoints: a.adzan_points,
         total: a.total,
-        date: a.date
+        date: a.date,
+        createdAt: a.created_at ? new Date(a.created_at) : undefined
       }));
 
       const mappedRedeemHistory = (rhData || []).map((r: any) => ({

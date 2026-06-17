@@ -95,6 +95,7 @@ export interface AdzanEntry {
   adzanPoints: number;
   total: number;
   date: string;
+  createdAt?: Date;
 }
 
 export interface ApiResponse<T> {
