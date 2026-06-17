@@ -6,6 +6,7 @@ import React, {
   useMemo,
   ReactNode,
   useEffect,
+  useRef,
 } from "react";
 import {
   Participant,
@@ -179,6 +180,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       return updated;
     });
   }, []);
+  const loadGenRef = useRef(0);
   const [isLoading, setIsLoading] = useState(true);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [points, setPoints] = useState<Record<string, PointValue>>({});
@@ -202,6 +204,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
 
   // ─── Initial Load ───────────────────────────────────────────────────────────
   const loadAllData = useCallback(async () => {
+    // Increment generation — any older in-flight call will be discarded
+    const gen = ++loadGenRef.current;
     setIsLoading(true);
     try {
       const [
@@ -304,6 +308,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         completedAt: new Date(qa.completed_at)
       }));
 
+      // If a newer load has started, discard this stale result
+      if (gen !== loadGenRef.current) return;
+
       setParticipants(mappedParticipants);
       setTransactions(mappedTransactions);
       setAttendanceLog(mappedAttendance);
@@ -388,14 +395,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
 
   // ─── Realtime Subscriptions ────────────────────────────────────────────────
   useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
     const channel = supabase
       .channel("db-changes")
       .on("postgres_changes", { event: "*", schema: "public" }, () => {
-        loadAllData(); // Refresh on any change for consistency
+        // Debounce: tunggu 300ms setelah event terakhir baru load
+        // Ini mencegah banyak loadAllData() serentak saat 1 aksi tulis ke beberapa tabel
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          loadAllData();
+        }, 300);
       })
       .subscribe();
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
   }, [loadAllData]);
