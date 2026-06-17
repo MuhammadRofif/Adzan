@@ -261,8 +261,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         participantName: mappedParticipants.find((p: any) => p.id === a.participant_id)?.nama || 'Unknown',
         prayerTime: a.prayer_time,
         date: a.date,
-        points: a.points
+        points: a.points,
+        createdAt: a.created_at ? new Date(a.created_at) : undefined
       }));
+
 
       const mappedAdzan = (adzData || []).map((a: any) => ({
         id: a.id,

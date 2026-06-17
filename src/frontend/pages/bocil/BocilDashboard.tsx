@@ -164,16 +164,20 @@ export const BocilDashboard: React.FC = () => {
       : { current: null, next: null };
   }, [myStats]);
 
-  const recentAdzan = useMemo(() => {
-    return [...adzanLog]
-      .sort((a, b) => {
-        // Sort by createdAt if available, otherwise fallback to date string
-        const aTime = a.createdAt ? a.createdAt.getTime() : new Date(a.date).getTime();
-        const bTime = b.createdAt ? b.createdAt.getTime() : new Date(b.date).getTime();
-        return bTime - aTime;
-      })
+  // Gabungkan adzan + latihan, sort terbaru dulu, ambil 10
+  const recentActivity = useMemo(() => {
+    const getTime = (item: any) => {
+      if (item.createdAt) return item.createdAt.getTime();
+      return new Date(item.date).getTime();
+    };
+
+    const adzanItems = adzanLog.map(a => ({ ...a, _type: 'adzan' as const }));
+    const attendItems = attendanceLog.map(a => ({ ...a, _type: 'latihan' as const }));
+
+    return [...adzanItems, ...attendItems]
+      .sort((a, b) => getTime(b) - getTime(a))
       .slice(0, 10);
-  }, [adzanLog]);
+  }, [adzanLog, attendanceLog]);
 
   const neighboringFriends = useMemo(() => {
     if (!viewParticipant) return [];
@@ -1235,63 +1239,70 @@ export const BocilDashboard: React.FC = () => {
         <div className="lg:col-span-4 space-y-6">
           <div className="bocil-card bg-white h-full max-h-[600px] overflow-hidden flex flex-col">
             <div className="bocil-card-header">
-              <h2 className="bocil-card-title">🎤 Adzan Terbaru</h2>
+              <h2 className="bocil-card-title">🎤 Aktivitas Terbaru</h2>
             </div>
             <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
-              {recentAdzan.map((a, i) => {
-                const isAdzan = a.adzanPoints === 10;
-                const timeLabel = a.createdAt
-                  ? a.createdAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+              {recentActivity.map((item) => {
+                const isLatihan = item._type === 'latihan';
+                const isAdzan = !isLatihan && (item as any).adzanPoints === 10;
+                const isSholawat = !isLatihan && (item as any).adzanPoints === 8;
+
+                const timeLabel = item.createdAt
+                  ? item.createdAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
                   : null;
-                const dateLabel = a.createdAt
-                  ? a.createdAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
-                  : a.date;
+                const dateLabel = item.createdAt
+                  ? item.createdAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+                  : item.date;
+
+                const pts = isLatihan ? (item as any).points : (item as any).total;
+                const emoji = isLatihan ? '⭐' : isAdzan ? '📢' : '📿';
+                const typeLabel = isLatihan ? 'Latihan' : isAdzan ? 'Adzan' : 'Sholawat+Iqomah';
+                const avatarBg = isLatihan
+                  ? 'bg-blue-500'
+                  : (item as any).attitude === 'Bagus'
+                    ? 'bg-emerald-500'
+                    : (item as any).attitude === 'Cukup Bagus'
+                      ? 'bg-yellow-500'
+                      : 'bg-red-500';
+
                 return (
-                <div
-                  key={a.id}
-                  className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100"
-                >
                   <div
-                    className={cn(
-                      "w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-sm flex-shrink-0",
-                      a.attitude === "Bagus"
-                        ? "bg-emerald-500"
-                        : a.attitude === "Cukup Bagus"
-                          ? "bg-yellow-500"
-                          : "bg-red-500",
-                    )}
+                    key={`${item._type}-${item.id}`}
+                    className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100"
                   >
-                    {a.participantName.charAt(0)}
+                    <div className={cn(
+                      "w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-sm flex-shrink-0",
+                      avatarBg
+                    )}>
+                      {item.participantName.charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-gray-800 truncate">
+                        {item.participantName}
+                      </p>
+                      <p className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                        <span>{emoji}</span>
+                        <span className="uppercase">{item.prayerTime}</span>
+                        <span className="text-gray-200">•</span>
+                        <span className="text-[9px]">{typeLabel}</span>
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <span className="text-[10px] font-black text-primary-600 bg-primary-50 px-2 py-1 rounded-lg block">+{pts}</span>
+                      <span className="text-[9px] text-gray-300 font-medium block mt-0.5">
+                        {timeLabel ?? dateLabel}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-gray-800 truncate">
-                      {a.participantName}
-                    </p>
-                    <p className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
-                      <span>{isAdzan ? '📢' : '📿'}</span>
-                      <span className="uppercase">{a.prayerTime}</span>
-                      <span className="text-gray-200">•</span>
-                      <span className="text-[9px]">{isAdzan ? 'Adzan' : 'Sholawat+Iqomah'}</span>
-                    </p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <span className="text-[10px] font-black text-primary-600 bg-primary-50 px-2 py-1 rounded-lg block">+{a.total}</span>
-                    {timeLabel ? (
-                      <span className="text-[9px] text-gray-300 font-medium block mt-0.5">{timeLabel}</span>
-                    ) : (
-                      <span className="text-[9px] text-gray-300 font-medium block mt-0.5">{dateLabel}</span>
-                    )}
-                  </div>
-                </div>
-              );
+                );
               })}
-              {recentAdzan.length === 0 && (
+              {recentActivity.length === 0 && (
                 <div className="text-center py-12">
                   <span className="text-4xl block mb-2">🎤</span>
                   <p className="text-gray-400 text-xs italic">
-                    Belum ada adzan hari ini.
+                    Belum ada aktivitas terbaru.
                     <br />
-                    Ayo jadi muadzin pertama! ✨
+                    Ayo catat adzan atau latihan! ✨
                   </p>
                 </div>
               )}

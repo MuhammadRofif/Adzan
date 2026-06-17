@@ -83,6 +83,7 @@ export interface AttendanceEntry {
   prayerTime?: string;
   date: string;
   points: number;
+  createdAt?: Date;
 }
 
 export interface AdzanEntry {
