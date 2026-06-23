@@ -203,6 +203,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     setScheduleState(prev => {
       const updated = typeof newSchedule === 'function' ? newSchedule(prev) : newSchedule;
       localStorage.setItem('bocil_adzan_schedule', JSON.stringify(updated));
+      
+      // Sinkronisasi ke Supabase (Fire-and-forget agar tidak memblokir UI)
+      supabase.from("adzan_schedule").select("id").limit(1).then(({ data, error: fetchErr }) => {
+        if (fetchErr) {
+          console.error("Gagal sinkronisasi jadwal ke Supabase", fetchErr);
+          return;
+        }
+        if (data && data.length > 0) {
+          supabase.from("adzan_schedule").update({ schedule_data: updated, updated_at: new Date() }).eq("id", data[0].id).then();
+        } else {
+          supabase.from("adzan_schedule").insert([{ schedule_data: updated }]).then();
+        }
+      });
+
       return updated;
     });
   }, []);
@@ -261,6 +275,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         supabase.from("quiz_attempts").select("*").order("completed_at", { ascending: false }).limit(5000),
         supabase.from("budget_settings").select("*").limit(1),
       ]);
+
+      // Sinkronisasi jadwal Adzan dari Supabase
+      const { data: schedData, error: schedError } = await supabase.from("adzan_schedule").select("*").limit(1);
+      if (!schedError && schedData && schedData.length > 0) {
+        setScheduleState(schedData[0].schedule_data);
+        localStorage.setItem('bocil_adzan_schedule', JSON.stringify(schedData[0].schedule_data));
+      }
 
       const mappedParticipants = (pData || []).map((p: any) => ({
         id: p.id,
