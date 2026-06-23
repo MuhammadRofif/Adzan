@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { cn } from '../../utils/cn';
+import { Toast } from '../ui/Toast';
 
 const bocilNavItems = [
   { name: 'Dashboard', href: '/', emoji: '🏠' },
@@ -81,6 +82,9 @@ export const BocilLayout: React.FC = () => {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         <Outlet />
       </main>
+
+      {/* Toast Notifications */}
+      <Toast />
 
       {/* Footer */}
       <footer className="border-t border-gray-100 bg-white py-4 mt-8">

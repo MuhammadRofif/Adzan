@@ -262,6 +262,8 @@ const BocilQuizPlayer: React.FC<{
   );
 };
 
+import { FourPlayerChessBoard, ChessPlayer } from '../../components/ui/FourPlayerChessBoard';
+
 const getShareText = (name: string, rank: number, score: number, attempts: number) => {
   const emoji = rank === 1 ? '👑🏆🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '🛡️💪';
   const rankText = rank === 1 ? 'duduk di Singgasana Peringkat 1' : `meraih Peringkat ${rank} (Pejuang Tangguh)`;
@@ -991,12 +993,22 @@ const copyLeaderboardToClipboardAndOpenWA = async (blob: Blob) => {
 
 // ─── Main Bocil Quiz Page ─────────────────────────────────────────────────────
 export const BocilQuiz: React.FC = () => {
-  const { quizzes, quizAttempts, participants } = useApp();
+  const { quizzes, quizAttempts, participants, addTransaction } = useApp();
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
   const [selectedParticipant, setSelectedParticipant] = useState(() => localStorage.getItem('bocil_id') || '');
   const [playing, setPlaying] = useState(false);
   const [resultPopup, setResultPopup] = useState<{ score: number; pts: number } | null>(null);
   const [shareTarget, setShareTarget] = useState<{ name: string; rank: number; score: number; attempts: number; avatarUrl: string | null } | null>(null);
+
+  // Catur Duo State
+  const [caturPreviewQuiz, setCaturPreviewQuiz] = useState<Quiz | null>(null);
+  const [caturPlayQuiz, setCaturPlayQuiz] = useState<Quiz | null>(null);
+  const [caturParticipants, setCaturParticipants] = useState<Record<ChessPlayer, { id: string, name: string, active: boolean }>>({
+    p1: { id: '', name: '', active: false },
+    p2: { id: '', name: '', active: false },
+    p3: { id: '', name: '', active: false },
+    p4: { id: '', name: '', active: false }
+  });
 
   useEffect(() => {
     const saved = localStorage.getItem('bocil_id');
@@ -1014,7 +1026,7 @@ export const BocilQuiz: React.FC = () => {
   }, [selectedQuiz]);
 
   useEffect(() => {
-    const isModalOpen = !!(selectedQuiz && selectedParticipant && !playing);
+    const isModalOpen = !!(selectedQuiz && selectedParticipant && !playing) || !!caturPreviewQuiz || !!caturPlayQuiz;
     if (isModalOpen) {
       document.body.style.overflow = 'hidden';
     } else {
@@ -1023,7 +1035,7 @@ export const BocilQuiz: React.FC = () => {
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [selectedQuiz, selectedParticipant, playing]);
+  }, [selectedQuiz, selectedParticipant, playing, caturPreviewQuiz, caturPlayQuiz]);
 
   const activeQuizzes = quizzes.filter(q => q.isActive);
   const activeParticipants = participants.filter(p => p.status === 'aktif');
@@ -1140,12 +1152,14 @@ export const BocilQuiz: React.FC = () => {
                     </div>
                     <div className={cn(
                       "text-[9px] font-black px-2.5 py-1 rounded-lg border flex items-center gap-1",
-                      quiz.mode === 'block_blast' 
-                        ? "bg-indigo-50 text-indigo-600 border-indigo-200"
-                        : "bg-emerald-50 text-emerald-600 border-emerald-200"
+                      quiz.mode === 'catur_duo'
+                        ? "bg-rose-50 text-rose-600 border-rose-200"
+                        : quiz.mode === 'block_blast' 
+                          ? "bg-indigo-50 text-indigo-600 border-indigo-200"
+                          : "bg-emerald-50 text-emerald-600 border-emerald-200"
                     )}>
-                      <span>{quiz.mode === 'block_blast' ? '👾' : '📝'}</span>
-                      {quiz.mode === 'block_blast' ? 'MODE BLOCK BLAST' : 'MODE BIASA'}
+                      <span>{quiz.mode === 'catur_duo' ? '♟️' : quiz.mode === 'block_blast' ? '👾' : '📝'}</span>
+                      {quiz.mode === 'catur_duo' ? 'MODE KUIS CATUR' : quiz.mode === 'block_blast' ? 'MODE BLOCK BLAST' : 'MODE BIASA'}
                     </div>
                   </div>
                   <div className="flex items-start justify-between mb-1">
@@ -1172,22 +1186,36 @@ export const BocilQuiz: React.FC = () => {
                     </div>
                   </div>
                   <button
-                    onClick={() => setSelectedQuiz(quiz)}
+                    onClick={() => {
+                      if (quiz.mode === 'catur_duo') {
+                        // Pre-fill Player 1 with selected participant
+                        const p1Name = activeParticipants.find(p => String(p.id) === String(selectedParticipant))?.nama || '';
+                        setCaturParticipants(prev => ({
+                          ...prev,
+                          p1: { id: selectedParticipant, name: p1Name, active: true }
+                        }));
+                        setCaturPreviewQuiz(quiz);
+                      } else {
+                        setSelectedQuiz(quiz);
+                      }
+                    }}
                     disabled={!selectedParticipant}
                     className={cn(
                       'w-full py-3 rounded-xl font-bold text-sm transition-all duration-200',
                       !selectedParticipant 
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : doneToday
+                        : (doneToday && quiz.mode !== 'catur_duo')
                           ? 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100'
-                          : 'bocil-btn-primary'
+                          : quiz.mode === 'catur_duo' 
+                            ? 'bg-gradient-to-r from-rose-500 to-rose-600 text-white hover:from-rose-600 hover:to-rose-700 shadow-md shadow-rose-200'
+                            : 'bocil-btn-primary'
                     )}
                   >
                     {!selectedParticipant 
                       ? 'Pilih nama dulu 👆' 
-                      : doneToday 
+                      : (doneToday && quiz.mode !== 'catur_duo')
                         ? 'Sudah Selesai Hari Ini ✅' 
-                        : 'Mulai Quiz 🚀'}
+                        : quiz.mode === 'catur_duo' ? 'Main Bersama Teman ⚔️' : 'Mulai Quiz 🚀'}
                   </button>
                 </div>
               );
@@ -1432,8 +1460,8 @@ export const BocilQuiz: React.FC = () => {
           <h2 className="text-xl font-bold text-gray-900 font-heading mb-4">🏆 Hasil Quiz Terbaru</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {quizAttempts.slice(0, 6).map((attempt, i) => {
-              const p = participants.find(x => x.id === attempt.participantId);
-              const q = quizzes.find(x => x.id === attempt.quizId);
+              const p = participants.find(x => String(x.id) === String(attempt.participantId));
+              const q = quizzes.find(x => String(x.id) === String(attempt.quizId));
               const emoji = attempt.score >= 80 ? '🌟' : attempt.score >= 60 ? '👍' : '💪';
               return (
                 <div key={attempt.id} className="bocil-result-card animate-fade-in" style={{ animationDelay: `${i * 0.05}s` }}>
@@ -1477,6 +1505,99 @@ export const BocilQuiz: React.FC = () => {
             </div>
           </div>
         </div>,
+        document.body
+      )}
+
+      {/* Catur Preview Modal */}
+      {caturPreviewQuiz && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setCaturPreviewQuiz(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl p-6 max-w-md w-full animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-6">
+              <div className="text-5xl mb-3 animate-bounce">♟️</div>
+              <h3 className="text-xl font-bold text-gray-900 font-heading">Siapkan Pasukanmu!</h3>
+              <p className="text-sm text-gray-500 mt-1">Pilih teman-teman yang akan bertanding (Minimal 2 orang)</p>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              {(['p1', 'p2', 'p3', 'p4'] as ChessPlayer[]).map((p, idx) => (
+                <div key={p} className={cn("p-3 rounded-2xl border-2 transition-all", caturParticipants[p].active ? 'border-emerald-500 bg-emerald-50/50' : 'border-gray-200 bg-gray-50')}>
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="checkbox" 
+                      checked={caturParticipants[p].active} 
+                      onChange={(e) => setCaturParticipants(prev => ({...prev, [p]: {...prev[p], active: e.target.checked}}))}
+                      className="w-6 h-6 accent-emerald-500 rounded-lg shrink-0 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <select 
+                        value={caturParticipants[p].id} 
+                        onChange={e => {
+                          const id = e.target.value;
+                          const name = id ? e.target.options[e.target.selectedIndex].text : '';
+                          setCaturParticipants(prev => ({...prev, [p]: { id, name, active: !!id }}));
+                        }}
+                        disabled={!caturParticipants[p].active}
+                        className={cn("w-full bg-transparent font-bold focus:outline-none text-sm", !caturParticipants[p].active && 'text-gray-400')}
+                      >
+                        <option value="">Pilih Teman {idx + 1}...</option>
+                        {activeParticipants.map(pt => (
+                          <option key={pt.id} value={pt.id}>{pt.nama}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setCaturPreviewQuiz(null)} className="bocil-btn-secondary flex-1 py-3">Batal</button>
+              <button 
+                onClick={() => {
+                  const validPlayers = Object.values(caturParticipants).filter(p => p.active && p.id);
+                  if (validPlayers.length >= 2) {
+                    setCaturPlayQuiz(caturPreviewQuiz);
+                    setCaturPreviewQuiz(null);
+                  }
+                }} 
+                disabled={Object.values(caturParticipants).filter(p => p.active && p.id).length < 2}
+                className="bocil-btn-primary flex-1 py-3 bg-rose-500 hover:bg-rose-600 disabled:bg-gray-200 disabled:text-gray-400"
+              >
+                Mulai Battle! ⚔️
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Catur Play Mode Overlay */}
+      {caturPlayQuiz && createPortal(
+        <FourPlayerChessBoard 
+          participants={caturParticipants}
+          onFinish={(winner: ChessPlayer | 'draw') => {
+            setCaturPlayQuiz(null);
+            if (winner !== 'draw') {
+              const winnerName = caturParticipants[winner].name;
+              const winnerId = caturParticipants[winner].id;
+              alert(`Permainan Selesai! Pemenangnya adalah: ${winnerName} 🏆\nSelamat! ${winnerName} mendapatkan +5 Poin!`);
+              
+              // Memberikan poin 5 ke pemenang
+              addTransaction({
+                participantId: winnerId,
+                adminId: 'system',
+                type: "adjustment",
+                points: 5,
+                reason: `Menang Battle Royale Catur: ${caturPlayQuiz.title}`
+              });
+              
+              setResultPopup({ score: 100, pts: 5 });
+            } else {
+              alert('Permainan Seri! Semuanya imbang. Tidak ada yang mendapat poin.');
+            }
+          }}
+          onClose={() => setCaturPlayQuiz(null)}
+        />,
         document.body
       )}
 

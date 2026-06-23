@@ -146,14 +146,17 @@ const emptyPointValue = (): PointValue => ({
 // ─── Context ──────────────────────────────────────────────────────────────────────
 const AppContext = createContext<AppContextType | null>(null);
 
+// Atha nonaktif. Hafi & Rega KHUSUS Shubuh — tidak masuk slot non-Shubuh
+// Non-Shubuh: setiap orang maks 2x/minggu
+const SHUBUH_ONLY = ["hafi", "rega"]; // nama lowercase untuk comparasi
 const DEFAULT_SCHEDULE: Record<string, Record<string, string>> = {
-  "Senin": { "Shubuh": "Atha", "Zhuhur": "Radit", "Ashar": "Irwan", "Magrib": "Adriza", "Isya": "Ozi" },
-  "Selasa": { "Shubuh": "Hafi", "Zhuhur": "Iqbal", "Ashar": "Ozi", "Magrib": "Adriza", "Isya": "Rega" },
-  "Rabu": { "Shubuh": "Rega", "Zhuhur": "Adit", "Ashar": "Deden", "Magrib": "Hafi", "Isya": "Akmal" },
-  "Kamis": { "Shubuh": "Atha", "Zhuhur": "Iqbal Adek Akmal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Rizky" },
-  "Jum'at": { "Shubuh": "Hafi", "Zhuhur": "LOCKED", "Ashar": "Radit", "Magrib": "Hafi", "Isya": "Akmal" },
-  "Sabtu": { "Shubuh": "Rega", "Zhuhur": "Irwan", "Ashar": "Deden", "Magrib": "Rega", "Isya": "Adriza" },
-  "Minggu": { "Shubuh": "Atha", "Zhuhur": "Iqbal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Hafi" }
+  "Senin":   { "Shubuh": "Hafi",  "Zhuhur": "Radit",            "Ashar": "Irwan",  "Magrib": "Adriza", "Isya": "Ozi"   },
+  "Selasa":  { "Shubuh": "Rega",  "Zhuhur": "Iqbal",            "Ashar": "Ozi",    "Magrib": "Adriza", "Isya": "Akmal" }, // Rega Isya → Akmal
+  "Rabu":    { "Shubuh": "Hafi",  "Zhuhur": "Adit",             "Ashar": "Kosong", "Magrib": "Abid",   "Isya": "Akmal" }, // Hafi Magrib → Abid
+  "Kamis":   { "Shubuh": "Rega",  "Zhuhur": "Iqbal Adek Akmal", "Ashar": "Nail",   "Magrib": "Saka",   "Isya": "Rizky" },
+  "Jum'at":  { "Shubuh": "Hafi",  "Zhuhur": "LOCKED",           "Ashar": "Radit",  "Magrib": "Farid",  "Isya": "Deny"  }, // Hafi Magrib → Farid
+  "Sabtu":   { "Shubuh": "Rega",  "Zhuhur": "Irwan",            "Ashar": "Kosong", "Magrib": "Danu",   "Isya": "Rizky" }, // Rega Magrib → Danu
+  "Minggu":  { "Shubuh": "Hafi",  "Zhuhur": "Iqbal",            "Ashar": "Nail",   "Magrib": "Saka",   "Isya": "Adit"  }
 };
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({
@@ -162,14 +165,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   const [schedule, setScheduleState] = useState<Record<string, Record<string, string>>>(() => {
     const saved = localStorage.getItem('bocil_adzan_schedule');
     const base = saved ? JSON.parse(saved) : DEFAULT_SCHEDULE;
-    const SHUBUH_ROTATION = ["Atha", "Hafi", "Rega"];
+    // Rotasi shubuh hanya 2 orang (Atha sudah nonaktif)
+    const SHUBUH_ROTATION = ["Hafi", "Rega"];
     const DAYS = ["Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu", "Minggu"];
     DAYS.forEach((day, dayIndex) => {
       if (!base[day]) base[day] = {};
-      if (!base[day]["Shubuh"] || base[day]["Shubuh"] === "Kosong") {
-        base[day]["Shubuh"] = SHUBUH_ROTATION[dayIndex % 3];
+      const shubuh = base[day]["Shubuh"];
+      // Isi slot kosong ATAU ganti "Atha" yang masih tersimpan di localStorage
+      if (!shubuh || shubuh === "Kosong" || shubuh === "Atha") {
+        base[day]["Shubuh"] = SHUBUH_ROTATION[dayIndex % 2];
+      }
+      // Migrasi slot yang sudah diubah (hapus nama lama dari localStorage)
+      Object.keys(base[day]).forEach(prayer => {
+        // Hapus nama-nama yang sudah dinonaktifkan / dihapus dari jadwal
+        if (["Deden", "Rama"].includes(base[day][prayer])) {
+          base[day][prayer] = "Kosong";
+        }
+        // Hafi & Rega HANYA boleh di Shubuh — bersihkan dari slot lain
+        if (prayer !== "Shubuh" && SHUBUH_ONLY.includes(base[day][prayer]?.toLowerCase())) {
+          base[day][prayer] = "Kosong";
+        }
+      });
+      // Perbaiki distribusi: Adriza Sabtu Isya → Rizky, Minggu Isya → Adit
+      if (day === "Sabtu" && base[day]["Isya"] === "Adriza") {
+        base[day]["Isya"] = "Rizky";
+      }
+      if (day === "Minggu" && base[day]["Isya"] === "Hafi") {
+        base[day]["Isya"] = "Adit";
       }
     });
+    // Simpan hasil migrasi kembali ke localStorage
+    localStorage.setItem('bocil_adzan_schedule', JSON.stringify(base));
     return base;
   });
 
@@ -727,16 +753,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       // Use local date for "today" to avoid UTC rollover issues
       const today = new Date().toLocaleDateString('en-CA');
       
-      // Logic: Points can be earned incrementally up to the maximum correct answers for today.
-      const pointsEarnedToday = quizAttempts
-        .filter(
-          (a) =>
-            String(a.participantId) === String(participantId) &&
-            String(a.quizId) === String(quizId) &&
-            new Date(a.completedAt).toLocaleDateString('en-CA') === today
-        )
+      // Logic: Only give points if this attempt has MORE correct answers than the best attempt today.
+      // This prevents poin berkurang (decreasing points) when retaking a quiz.
+      const todayAttempts = quizAttempts.filter(
+        (a) =>
+          String(a.participantId) === String(participantId) &&
+          String(a.quizId) === String(quizId) &&
+          new Date(a.completedAt).toLocaleDateString('en-CA') === today
+      );
+
+      // Total poin yang sudah diberikan hari ini untuk kuis ini
+      const pointsEarnedToday = todayAttempts
         .reduce((sum, a) => sum + (a.earnedPoints || 0), 0);
 
+      // Hanya tambah poin jika hasil baru lebih baik dari yang sudah diperoleh hari ini
+      // Ini mencegah poin berkurang saat kuis diulang dengan hasil lebih rendah
       const finalEarnedPoints = Math.max(0, earnedPoints - pointsEarnedToday);
 
       const { error } = await supabase.from("quiz_attempts").insert([{
@@ -761,11 +792,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
           reason: `Quiz: ${quiz.title} - Skor: ${score}%`,
           adminId: "system",
         });
-      } else if (earnedPoints > 0 && pointsEarnedToday > 0) {
+        showToast(`Quiz selesai! Skor: ${score}% (+${finalEarnedPoints} poin)`);
+      } else if (todayAttempts.length > 0) {
+        // Sudah pernah mengerjakan hari ini
         if (pointsEarnedToday >= quiz.questions.length) {
-          showToast("Kamu sudah mendapatkan poin maksimal untuk kuis ini hari ini!", "info");
+          showToast("Kamu sudah mendapatkan poin maksimal untuk kuis ini hari ini! 🏆", "info");
+        } else if (earnedPoints > 0) {
+          showToast(`Quiz selesai! Skor: ${score}% (Tidak ada poin tambahan, hasil tidak lebih baik dari sebelumnya)`, "info");
         } else {
-          showToast("Terus tingkatkan benarmu untuk mendapat sisa poin!", "info");
+          showToast(`Quiz selesai! Skor: ${score}% (Tidak ada jawaban benar)`, "info");
         }
       }
 

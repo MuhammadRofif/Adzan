@@ -4,7 +4,7 @@ import { cn } from "../../utils/cn";
 import { AdzanEntry, Participant, PANGKAT_LEVELS, getPangkat } from "../../../shared/types";
 import { Modal } from "../../components/ui/Modal";
 import { Button } from "../../components/ui/Button";
-import { Award, Mic, CheckCircle2, BookOpen, Star, AlignCenter } from "lucide-react";
+import { Award, Mic, CheckCircle2, BookOpen, Star, AlignCenter, History, TrendingUp, TrendingDown, Clock } from "lucide-react";
 
 // ─── Animated Counter ─────────────────────────────────────────────────────────
 const AnimatedNumber: React.FC<{ target: number; duration?: number }> = ({
@@ -59,7 +59,7 @@ const Medal: React.FC<{ rank: number }> = ({ rank }) => {
 };
 
 export const BocilDashboard: React.FC = () => {
-  const { participants, points, adzanLog, attendanceLog, quizAttempts, schedule, transactions } =
+  const { participants, points, adzanLog, attendanceLog, quizAttempts, quizzes, redeemHistory, schedule, transactions } =
     useApp();
   const [selectedUser, setSelectedUser] = useState<string | null>(() =>
     localStorage.getItem("bocil_id"),
@@ -72,6 +72,7 @@ export const BocilDashboard: React.FC = () => {
     const todayIndex = new Date().getDay();
     return days[todayIndex];
   });
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
 
   const myParticipant = useMemo(() => {
@@ -1921,19 +1922,216 @@ export const BocilDashboard: React.FC = () => {
             )}
 
             {/* Actions Footer */}
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <Button
-                onClick={() => downloadParticipantReportImage(viewParticipant)}
-                className="flex-1 py-3 bg-primary-600 hover:bg-primary-700 text-white font-black rounded-xl transition-all active:scale-95 text-xs tracking-wider flex items-center justify-center gap-1.5 shadow-sm shadow-primary-200"
+                onClick={() => setShowHistoryModal(true)}
+                className="w-full py-3 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-black rounded-xl transition-all active:scale-95 text-xs tracking-wider flex items-center justify-center gap-1.5 shadow-sm"
               >
-                <span>📥</span>
-                <span>UNDUH KARTU PRESTASI</span>
+                <History className="w-4 h-4" />
+                <span>LIHAT RIWAYAT POIN</span>
               </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => downloadParticipantReportImage(viewParticipant)}
+                  className="flex-1 py-3 bg-primary-600 hover:bg-primary-700 text-white font-black rounded-xl transition-all active:scale-95 text-xs tracking-wider flex items-center justify-center gap-1.5 shadow-sm shadow-primary-200"
+                >
+                  <span>📥</span>
+                  <span>UNDUH KARTU</span>
+                </Button>
+                <Button
+                  onClick={() => setViewParticipant(null)}
+                  className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-black rounded-xl transition-all active:scale-95 text-xs tracking-wider"
+                >
+                  TUTUP
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Point History Modal */}
+      {showHistoryModal && viewParticipant && (
+        <Modal
+          isOpen={showHistoryModal}
+          onClose={() => setShowHistoryModal(false)}
+          title={`Riwayat Poin - ${viewParticipant.nama}`}
+        >
+          <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+            <div className="bg-primary-50 rounded-xl p-4 flex items-center justify-between mb-4 border border-primary-100 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary-100 text-primary-600 rounded-full flex items-center justify-center shadow-inner">
+                  <Star className="w-5 h-5 fill-current" />
+                </div>
+                <div>
+                  <p className="text-xs text-primary-600 font-bold uppercase tracking-wider">Total Poin Saat Ini</p>
+                  <p className="text-2xl font-black text-primary-800">
+                    {points[viewParticipant.id]?.total ?? 0} <span className="text-sm font-bold text-primary-600">pts</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative border-l-2 border-gray-100 pl-4 ml-2 space-y-6">
+              {(() => {
+                const myId = String(viewParticipant.id);
+                const allEvents: any[] = [];
+
+                // 1. Adzan & Sholawat
+                adzanLog.filter(a => String(a.participantId) === myId).forEach(a => {
+                  allEvents.push({
+                    id: 'adzan_' + a.id,
+                    type: a.adzanPoints === 8 ? 'sholawat' : 'adzan',
+                    points: a.total,
+                    reason: (a.adzanPoints === 8 ? 'Sholawat + Iqomah' : 'Adzan') + (a.prayerTime ? ` ${a.prayerTime}` : '') + ` - Sikap: ${a.attitude}`,
+                    timestamp: a.createdAt || a.date
+                  });
+                });
+
+                // 2. Latihan (Attendance)
+                attendanceLog.filter(a => String(a.participantId) === myId).forEach(a => {
+                  allEvents.push({
+                    id: 'att_' + a.id,
+                    type: 'attendance',
+                    points: a.points,
+                    reason: `Latihan` + (a.prayerTime ? ` ${a.prayerTime}` : ''),
+                    timestamp: a.createdAt || a.date
+                  });
+                });
+
+                // 3. Quiz
+                quizAttempts.filter(q => String(q.participantId) === myId).forEach(q => {
+                  const quizTitle = quizzes.find(qz => String(qz.id) === String(q.quizId))?.title || 'Kuis';
+                  allEvents.push({
+                    id: 'quiz_' + q.id,
+                    type: 'quiz',
+                    points: q.earnedPoints || 0,
+                    reason: `Quiz: ${quizTitle} - Skor: ${q.score}%`,
+                    timestamp: q.completedAt
+                  });
+                });
+
+                // 4. Adjustments from transactions
+                transactions.filter(t => String(t.participantId) === myId && t.type === 'adjustment').forEach(t => {
+                  allEvents.push({
+                    id: 'tx_' + t.id,
+                    type: 'adjustment',
+                    points: t.points,
+                    reason: t.reason,
+                    timestamp: t.timestamp
+                  });
+                });
+
+                // 5. Redeem History (Approved)
+                redeemHistory.filter(r => String(r.participantId) === myId && r.status === 'approved').forEach(r => {
+                  allEvents.push({
+                    id: 'redeem_' + r.id,
+                    type: 'redeem',
+                    points: -r.pointsSpent,
+                    reason: `Tukar Hadiah: ${r.packageName}`,
+                    timestamp: r.processedAt || r.requestedAt
+                  });
+                });
+
+                const userTxs = allEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+                let runningTotal = 0;
+                const txsWithBalance = userTxs.map(tx => {
+                  const previousTotal = runningTotal;
+                  runningTotal += tx.points;
+                  return { ...tx, previousTotal, newTotal: runningTotal };
+                });
+
+                // Reverse to display newest first
+                return txsWithBalance.reverse().map((tx) => {
+                  const isPositive = tx.points > 0;
+                  const isZero = tx.points === 0;
+                  const Icon = isPositive ? TrendingUp : isZero ? Clock : TrendingDown;
+                  
+                  // Tentukan warna dan ikon berdasarkan tipe
+                  let typeColor = "bg-gray-100 text-gray-500 border-gray-200";
+                  let typeIcon = "📝";
+                  
+                  if (tx.type === 'adzan') {
+                    typeColor = "bg-orange-100 text-orange-600 border-orange-200";
+                    typeIcon = "📢";
+                  } else if (tx.type === 'attendance') {
+                    typeColor = "bg-blue-100 text-blue-600 border-blue-200";
+                    typeIcon = "🏃";
+                  } else if (tx.type === 'quiz') {
+                    typeColor = "bg-purple-100 text-purple-600 border-purple-200";
+                    typeIcon = "🎮";
+                  } else if (tx.type === 'adjustment') {
+                    typeColor = "bg-emerald-100 text-emerald-600 border-emerald-200";
+                    typeIcon = "⭐";
+                  } else if (tx.type === 'redeem') {
+                    typeColor = "bg-rose-100 text-rose-600 border-rose-200";
+                    typeIcon = "🎁";
+                  }
+
+                  return (
+                    <div key={tx.id} className="relative group animate-fade-in">
+                      {/* Timeline Dot */}
+                      <div className={`absolute -left-[25px] mt-1.5 w-5 h-5 rounded-full border-2 border-white shadow-sm flex items-center justify-center ${isPositive ? 'bg-emerald-500' : isZero ? 'bg-gray-400' : 'bg-red-500'}`}>
+                        <Icon className="w-3 h-3 text-white" />
+                      </div>
+                      
+                      <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow group-hover:border-primary-100">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex gap-2 items-start">
+                            <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 text-sm ${typeColor}`}>
+                              {typeIcon}
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-800 text-sm">{tx.reason}</p>
+                              <div className="flex items-center gap-1.5 mt-1 text-xs text-gray-500">
+                                <Clock className="w-3 h-3" />
+                                {new Date(tx.timestamp).toLocaleString('id-ID', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex flex-col items-end">
+                            <div className={`shrink-0 font-black px-2.5 py-1 rounded-lg text-sm border ${
+                              isPositive 
+                                ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                                : isZero
+                                  ? 'bg-gray-50 text-gray-600 border-gray-100'
+                                  : 'bg-red-50 text-red-600 border-red-100'
+                            }`}>
+                              {isPositive ? '+' : ''}{tx.points} pts
+                            </div>
+                            <div className="text-[10px] text-gray-400 font-semibold mt-1">
+                              {tx.previousTotal} ➔ <span className={isPositive ? "text-emerald-500" : isZero ? "text-gray-500" : "text-red-500"}>{tx.newTotal} pts</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+
+              {transactions.filter(t => String(t.participantId) === String(viewParticipant.id)).length === 0 && (
+                <div className="text-center py-8 text-gray-400">
+                  <div className="text-4xl mb-2">👻</div>
+                  <p className="font-semibold">Belum ada riwayat poin.</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="pt-2 border-t border-gray-100">
               <Button
-                onClick={() => setViewParticipant(null)}
-                className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-black rounded-xl transition-all active:scale-95 text-xs tracking-wider"
+                onClick={() => setShowHistoryModal(false)}
+                className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-black rounded-xl transition-all active:scale-95 text-xs tracking-wider"
               >
-                TUTUP
+                KEMBALI
               </Button>
             </div>
           </div>

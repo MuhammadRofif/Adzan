@@ -63,7 +63,7 @@ export interface Quiz {
   questions: QuizQuestion[];
   createdAt: Date;
   isActive: boolean;
-  mode?: 'biasa' | 'block_blast';
+  mode?: 'biasa' | 'block_blast' | 'catur_duo';
 }
 
 export interface QuizAttempt {

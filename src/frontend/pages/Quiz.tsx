@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Badge, SectionHeader, Input, Select, ConfirmDialog, EmptyState } from '../components/ui/index';
+import { ChessQuizBoard, ChessPlayer } from '../components/ui/ChessQuizBoard';
 import { Quiz, QuizQuestion } from '../../shared/types';
 import { cn } from '../utils/cn';
 
@@ -98,7 +99,7 @@ const QuizForm: React.FC<{
 }> = ({ initialQuiz, onSave, onClose }) => {
   const [title, setTitle] = useState(initialQuiz?.title || '');
   const [description, setDescription] = useState(initialQuiz?.description || '');
-  const [mode, setMode] = useState<'biasa' | 'block_blast'>(initialQuiz?.mode || 'biasa');
+  const [mode, setMode] = useState<'biasa' | 'block_blast' | 'catur_duo'>(initialQuiz?.mode || 'biasa');
   const [questions, setQuestions] = useState<(Omit<QuizQuestion, 'id'> & { id?: string })[]>(
     initialQuiz?.questions.map(q => ({ id: q.id, text: q.text, options: q.options, correctAnswer: q.correctAnswer })) || 
     [{ text: '', options: ['', '', '', ''], correctAnswer: 0 }]
@@ -155,8 +156,21 @@ const QuizForm: React.FC<{
                 : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
             )}
           >
-            <p className="font-bold text-sm font-heading">🎮 Mode Block Blast</p>
+            <p className="font-bold text-sm font-heading">🧩 Mode Block Blast</p>
             <p className="text-xs text-gray-400 mt-1">Main susun block terlebih dahulu, hancurkan baris untuk membuka kuis.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('catur_duo')}
+            className={cn(
+              "p-4 rounded-xl border-2 text-left transition-all col-span-2",
+              mode === 'catur_duo'
+                ? "border-primary-500 bg-primary-50/50 text-primary-700"
+                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+            )}
+          >
+            <p className="font-bold text-sm font-heading">♟️ Mode Kuis Catur (Maks 4 Player)</p>
+            <p className="text-xs text-gray-400 mt-1">Pemain bergerak di papan catur 7x7. Main face-to-face di satu HP (Landscape).</p>
           </button>
         </div>
       </div>
@@ -200,6 +214,19 @@ export const QuizPage: React.FC = () => {
   const [resultModal, setResultModal] = useState<{ score: number; pts: number } | null>(null);
   const [selectedParticipant, setSelectedParticipant] = useState('');
   const [previewQuiz, setPreviewQuiz] = useState<string | null>(null);
+  
+  // Mode Select State
+  const [playModeSelect, setPlayModeSelect] = useState<Quiz | null>(null);
+
+  // Catur Duo State
+  const [caturPreviewQuiz, setCaturPreviewQuiz] = useState<Quiz | null>(null);
+  const [caturPlayQuiz, setCaturPlayQuiz] = useState<Quiz | null>(null);
+  const [caturParticipants, setCaturParticipants] = useState<Record<ChessPlayer, { id: string, name: string, active: boolean }>>({
+    p1: { id: '', name: '', active: false },
+    p2: { id: '', name: '', active: false },
+    p3: { id: '', name: '', active: false },
+    p4: { id: '', name: '', active: false }
+  });
 
   const getAttemptCount = (quizId: string) => quizAttempts.filter(a => a.quizId === quizId).length;
   const getAvgScore = (quizId: string) => {
@@ -251,7 +278,7 @@ export const QuizPage: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
                   <Button variant="outline" size="sm" className="flex-1" leftIcon={<Play className="w-3.5 h-3.5" />}
-                    onClick={() => setPreviewQuiz(quiz.id)} disabled={!quiz.isActive}>Mainkan</Button>
+                    onClick={() => setPlayModeSelect(quiz)} disabled={!quiz.isActive}>Mainkan</Button>
                   <button onClick={() => { setEditingQuiz(quiz); setAddModal(true); }} className="p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-primary-600" title="Edit Quiz">
                     <Edit2 className="w-4 h-4" />
                   </button>
@@ -318,6 +345,98 @@ export const QuizPage: React.FC = () => {
         </Modal>
       )}
 
+      {/* Select Mode Modal */}
+      {playModeSelect && (
+        <Modal isOpen={!!playModeSelect} onClose={() => setPlayModeSelect(null)} title="Pilih Mode Bermain" size="md">
+          <div className="grid grid-cols-1 gap-3">
+            <button
+              onClick={() => {
+                setPreviewQuiz(playModeSelect.id);
+                setPlayModeSelect(null);
+              }}
+              className="p-4 rounded-xl border-2 border-gray-200 bg-white text-left hover:border-primary-500 hover:bg-primary-50 transition-all group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center group-hover:bg-primary-100">
+                  <span className="text-xl">📝</span>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-900">Mode Biasa (Solo)</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">Soal muncul berurutan, dimainkan sendiri.</p>
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                setCaturPreviewQuiz(playModeSelect);
+                setPlayModeSelect(null);
+              }}
+              className="p-4 rounded-xl border-2 border-gray-200 bg-white text-left hover:border-emerald-500 hover:bg-emerald-50 transition-all group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center group-hover:bg-emerald-100">
+                  <span className="text-xl">♟️</span>
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-900">Mode Kuis Catur (2-4 Player)</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">Bermain adu strategi di papan catur bersama teman.</p>
+                </div>
+              </div>
+            </button>
+          </div>
+          <Button variant="ghost" onClick={() => setPlayModeSelect(null)} className="w-full mt-4">Batal</Button>
+        </Modal>
+      )}
+
+      {/* Catur 4-Player Select Modal */}
+      {caturPreviewQuiz && (
+        <Modal isOpen={!!caturPreviewQuiz} onClose={() => setCaturPreviewQuiz(null)} title="Pilih Peserta (Mode Catur)" size="md"
+          footer={<>
+            <Button onClick={() => {
+              const activeCount = Object.values(caturParticipants).filter(p => p.active).length;
+              if (activeCount >= 2) {
+                setCaturPlayQuiz(caturPreviewQuiz);
+                setCaturPreviewQuiz(null);
+              }
+            }} className="w-full sm:w-auto sm:ml-3" disabled={Object.values(caturParticipants).filter(p => p.active).length < 2}>
+              Mulai Battle (Min 2)
+            </Button>
+            <Button variant="ghost" onClick={() => setCaturPreviewQuiz(null)} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
+          </>}
+        >
+          <div className="space-y-4">
+            {(['p1', 'p2', 'p3', 'p4'] as ChessPlayer[]).map((p, idx) => (
+              <div key={p} className="flex items-center gap-3">
+                <input 
+                  type="checkbox" 
+                  checked={caturParticipants[p].active} 
+                  onChange={(e) => setCaturParticipants(prev => ({...prev, [p]: {...prev[p], active: e.target.checked}}))}
+                  className="w-5 h-5 accent-primary-600 rounded"
+                />
+                <div className="flex-1">
+                  <Select 
+                    value={caturParticipants[p].id} 
+                    onChange={e => {
+                      const id = e.target.value;
+                      const name = participants.find(x => x.id === id)?.nama || '';
+                      setCaturParticipants(prev => ({...prev, [p]: { id, name, active: !!id }}));
+                    }}
+                    disabled={!caturParticipants[p].active}
+                  >
+                    <option value="">Pilih Player {idx + 1}...</option>
+                    {participants.filter(pt => pt.status === 'aktif').map(pt => (
+                      <option key={pt.id} value={pt.id}>{pt.nama}</option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+            ))}
+            <p className="text-xs text-gray-500 mt-2">Centang kotak untuk mengaktifkan slot pemain. Minimal butuh 2 pemain untuk bertanding.</p>
+          </div>
+        </Modal>
+      )}
+
       {/* Quiz Player Modal */}
       {playModal && (
         <Modal isOpen={!!playModal} onClose={() => setPlayModal(null)} title={playModal.quiz.title} size="lg">
@@ -325,6 +444,24 @@ export const QuizPage: React.FC = () => {
             onDone={(score, pts) => { setResultModal({ score, pts }); setPlayModal(null); }}
             onClose={() => setPlayModal(null)} />
         </Modal>
+      )}
+
+      {/* Catur Game Full Screen Overlay */}
+      {caturPlayQuiz && (
+        <ChessQuizBoard 
+          quiz={caturPlayQuiz}
+          participants={caturParticipants}
+          onFinish={(winner) => {
+            setCaturPlayQuiz(null);
+            if (winner !== 'draw') {
+              const winnerName = caturParticipants[winner].name;
+              alert(`Permainan Selesai! Pemenangnya adalah: ${winnerName} 🏆`);
+            } else {
+              alert('Permainan Seri!');
+            }
+          }}
+          onClose={() => setCaturPlayQuiz(null)}
+        />
       )}
 
       {/* Result */}

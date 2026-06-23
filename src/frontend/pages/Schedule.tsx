@@ -7,17 +7,10 @@ import { Button } from '../components/ui/Button';
 export const DAYS_OF_WEEK = ["Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu", "Minggu"];
 export const PRAYER_TIMES = ["Shubuh", "Zhuhur", "Ashar", "Magrib", "Isya"];
 
-const SHUBUH_ROTATION = ["Atha", "Hafi", "Rega"];
 
-const DEFAULT_SCHEDULE: Record<string, Record<string, string>> = {
-  "Senin": { "Shubuh": "Atha", "Zhuhur": "Radit", "Ashar": "Irwan", "Magrib": "Adriza", "Isya": "Ozi" },
-  "Selasa": { "Shubuh": "Hafi", "Zhuhur": "Iqbal", "Ashar": "Ozi", "Magrib": "Adriza", "Isya": "Rega" },
-  "Rabu": { "Shubuh": "Rega", "Zhuhur": "Adit", "Ashar": "Deden", "Magrib": "Hafi", "Isya": "Akmal" },
-  "Kamis": { "Shubuh": "Atha", "Zhuhur": "Iqbal Adek Akmal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Rizky" },
-  "Jum'at": { "Shubuh": "Hafi", "Zhuhur": "LOCKED", "Ashar": "Radit", "Magrib": "Hafi", "Isya": "Akmal" },
-  "Sabtu": { "Shubuh": "Rega", "Zhuhur": "Irwan", "Ashar": "Deden", "Magrib": "Rega", "Isya": "Adriza" },
-  "Minggu": { "Shubuh": "Atha", "Zhuhur": "Iqbal", "Ashar": "Nail", "Magrib": "Saka", "Isya": "Hafi" }
-};
+// Shubuh hanya Hafi & Rega (Atha sudah nonaktif)
+const SHUBUH_ROTATION = ["Hafi", "Rega"];
+
 
 export const SchedulePage: React.FC = () => {
   const { participants, showToast, schedule, updateSchedule: setSchedule } = useApp();
@@ -173,88 +166,79 @@ export const SchedulePage: React.FC = () => {
 
   // 1. FAIR SHUFFLE ALGORITHM ("Bagi Adil Semua Peserta")
   // Reshuffles everything from scratch, placing all active participants fairly.
+  // Aturan: Shubuh = Hafi & Rega bergantian. Non-Shubuh = max 2 slot/orang.
   const handleFairShuffle = () => {
     if (activeParticipants.length === 0) {
       showToast('Tidak ada peserta aktif untuk diacak!', 'error');
       return;
     }
 
-    const athaMatch = activeParticipants.find(p => p.nama.toLowerCase() === 'atha')?.nama || 'Atha';
+    // Shubuh: Hafi & Rega bergantian (7 hari → salah satu dapat 4, lainnya 3)
     const hafiMatch = activeParticipants.find(p => p.nama.toLowerCase() === 'hafi')?.nama || 'Hafi';
     const regaMatch = activeParticipants.find(p => p.nama.toLowerCase() === 'rega')?.nama || 'Rega';
-    const shubuhRotation = [athaMatch, hafiMatch, regaMatch];
 
-    // Get active participants other than Atha, Hafi, and Rega
-    const generalKids = activeParticipants
-      .filter(p => !['atha', 'hafi', 'rega'].includes(p.nama.toLowerCase()))
-      .map(p => p.nama);
+    // Randomize who gets the extra Shubuh slot this week
+    const shubuhSlots = Math.random() < 0.5
+      ? [hafiMatch, regaMatch, hafiMatch, regaMatch, hafiMatch, regaMatch, hafiMatch] // Hafi 4x, Rega 3x
+      : [regaMatch, hafiMatch, regaMatch, hafiMatch, regaMatch, hafiMatch, regaMatch]; // Rega 4x, Hafi 3x
+    // Acak urutan di antara seminggu
+    const shuffledShubuh = [...shubuhSlots].sort(() => Math.random() - 0.5);
 
     const newSchedule: Record<string, Record<string, string>> = {};
-    
-    // Randomly distribute 7 Shubuh slots among Atha/Hafi/Rega (each gets at least 2, one random person gets 3)
-    const shubuhSlots: string[] = [
-      ...Array(2).fill(athaMatch),
-      ...Array(2).fill(hafiMatch),
-      ...Array(2).fill(regaMatch),
-      shubuhRotation[Math.floor(Math.random() * 3)] // 7th slot goes to a random one
-    ].sort(() => Math.random() - 0.5);
 
-    // First, seed shubuh and friday zhuhur, default others to Kosong
+    // Seed shubuh dan default semua slot ke Kosong
     DAYS_OF_WEEK.forEach((day, dayIndex) => {
-      newSchedule[day] = {};
-      newSchedule[day]["Shubuh"] = shubuhSlots[dayIndex];
-      newSchedule[day]["Zhuhur"] = "Kosong";
-      newSchedule[day]["Ashar"] = "Kosong";
-      newSchedule[day]["Magrib"] = "Kosong";
-      newSchedule[day]["Isya"] = "Kosong";
+      newSchedule[day] = {
+        "Shubuh": shuffledShubuh[dayIndex],
+        "Zhuhur": "Kosong",
+        "Ashar": "Kosong",
+        "Magrib": "Kosong",
+        "Isya": "Kosong",
+      };
     });
-    // Lock Jum'at Zhuhur
+    // Kunci Jum'at Zhuhur
     newSchedule["Jum'at"]["Zhuhur"] = "LOCKED";
 
-    // Build the 28 general slots allocation pool (7 days * 5 prayers = 35 total. Locked: 1 Fri Zhuhur + 7 Shubuh = 27 open)
+    // Non-Shubuh slots: 7 hari × 4 waktu = 28 slot, -1 LOCKED = 27 slot
+    // Peserta non-Shubuh: semua peserta aktif KECUALI Hafi & Rega (mereka khusus Shubuh)
+    const generalKids = activeParticipants
+      .filter(p => !['hafi', 'rega'].includes(p.nama.toLowerCase()))
+      .map(p => p.nama);
+
     const allocation: string[] = [];
+    
     if (generalKids.length > 0) {
-      const N = generalKids.length;
-      const baseSlotsPerKid = Math.floor(28 / N);
-      const remainder = 28 % N;
-
-      // Shuffle generalKids so who gets the extra slot is completely fair and randomized
-      const randomizedKids = [...generalKids].sort(() => Math.random() - 0.5);
-
-      randomizedKids.forEach((name, index) => {
-        // Each kid gets baseSlotsPerKid, and the first 'remainder' kids get an extra slot
-        const count = baseSlotsPerKid + (index < remainder ? 1 : 0);
-        for (let i = 0; i < count; i++) {
-          allocation.push(name);
-        }
-      });
-    } else {
-      // Fallback if there are no kids other than Rega/Hafi
-      const fallbackPool = activeParticipants.map(p => p.nama);
-      while (allocation.length < 28) {
-        allocation.push(fallbackPool[Math.floor(Math.random() * fallbackPool.length)] || 'Kosong');
+      // 1. GARANSI: Setiap anak dapat minimal 1 slot
+      allocation.push(...generalKids);
+      
+      // 2. SISA SLOT: Dibagikan acak untuk slot ke-2 (maksimal 2 slot per anak)
+      const remainingSlots = 27 - allocation.length;
+      
+      if (remainingSlots > 0) {
+        const randomizedForExtra = [...generalKids].sort(() => Math.random() - 0.5);
+        // Beri slot ke-2 untuk anak-anak acak, tapi tidak lebih dari jumlah anak
+        const extraSlots = randomizedForExtra.slice(0, remainingSlots);
+        allocation.push(...extraSlots);
       }
     }
 
-    // Shuffle the final allocation array to mix the slots randomly and beautifully across days/prayers
-    const shuffledAllocation = [...allocation].sort(() => Math.random() - 0.5);
-    
-    // Distribute the shuffled allocation into the 28 open slots
-    let allocationIndex = 0;
-    DAYS_OF_WEEK.forEach((day, dayIndex) => {
+    // Acak alokasi dan isi 27 slot non-Shubuh
+    const shuffledAlloc = allocation.sort(() => Math.random() - 0.5);
+    let allocIdx = 0;
+
+    DAYS_OF_WEEK.forEach(day => {
       PRAYER_TIMES.forEach(prayer => {
-        if (prayer === "Shubuh") {
-          // Shubuh already randomly assigned from Atha/Hafi/Rega pool
-          // Keep the pre-assigned value
-        } else if (!(day === "Jum'at" && prayer === "Zhuhur")) {
-          newSchedule[day][prayer] = shuffledAllocation[allocationIndex] || 'Kosong';
-          allocationIndex++;
+        if (prayer === "Shubuh") return; // sudah diisi
+        if (day === "Jum'at" && prayer === "Zhuhur") return; // LOCKED
+        if (allocIdx < shuffledAlloc.length) {
+          newSchedule[day][prayer] = shuffledAlloc[allocIdx++];
         }
+        // Sisa slot (jika ada) tetap Kosong
       });
     });
 
     setSchedule(newSchedule);
-    showToast('Jadwal adzan berhasil diacak adil! Seluruh santri mendapatkan minimal 2 tugas adzan. 📢🎉', 'success');
+    showToast('Jadwal adzan berhasil diacak adil! Setiap santri mendapat maksimal 2 tugas adzan. 📢🎉', 'success');
   };
 
   // 2. FILL EMPTY / UNASSIGNED ("Masukkan Peserta Baru")
@@ -310,11 +294,10 @@ export const SchedulePage: React.FC = () => {
     }
   };
 
-  // Reset to default preset
+  // Reset: jalankan ulang bagi adil dari awal
   const handleResetToDefault = () => {
-    if (window.confirm("Apakah Anda yakin ingin mengembalikan ke jadwal default awal?")) {
-      setSchedule(DEFAULT_SCHEDULE);
-      showToast('Jadwal adzan telah dikembalikan ke preset semula.', 'info');
+    if (window.confirm("Apakah Anda yakin ingin mengacak ulang jadwal dari awal secara adil?")) {
+      handleFairShuffle();
     }
   };
 

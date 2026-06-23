@@ -5,12 +5,12 @@ import { cn } from '../../utils/cn';
 
 export const Toast: React.FC = () => {
   const { toast } = useApp();
-  if (!toast) return null;
+  if (!toast || !toast.show) return null;
 
   const icons = {
-    success: <CheckCircle className="w-5 h-5 text-emerald-500" />,
-    error: <XCircle className="w-5 h-5 text-red-500" />,
-    info: <Info className="w-5 h-5 text-blue-500" />,
+    success: <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />,
+    error: <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />,
+    info: <Info className="w-5 h-5 text-blue-500 flex-shrink-0" />,
   };
 
   const colors = {
@@ -21,11 +21,11 @@ export const Toast: React.FC = () => {
 
   return (
     <div className={cn(
-      "fixed top-6 right-6 z-[100] flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg animate-fade-in max-w-sm",
+      "fixed top-6 right-4 sm:right-6 z-[100] flex items-start gap-3 px-4 py-3 rounded-xl border shadow-lg animate-fade-in max-w-xs sm:max-w-sm",
       colors[toast.type]
     )}>
       {icons[toast.type]}
-      <p className="text-sm font-medium text-gray-800">{toast.message}</p>
+      <p className="text-sm font-medium text-gray-800 leading-snug">{toast.message}</p>
     </div>
   );
 };
