@@ -317,7 +317,7 @@ export const SchedulePage: React.FC = () => {
             <RefreshCw className="w-4 h-4 mr-2" />
             Reset Default
           </Button>
-          <Button onClick={handleFairShuffle} className="gradient-primary">
+          <Button onClick={handleResetToDefault} className="gradient-primary">
             <Sparkles className="w-4 h-4 mr-2 animate-pulse" />
             Bagi Adil Semua Peserta
           </Button>
