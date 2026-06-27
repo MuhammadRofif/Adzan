@@ -70,6 +70,7 @@ export const Participants: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [multiModal, setMultiModal] = useState(false);
   const [multiType, setMultiType] = useState<'attendance' | 'adzan' | 'sholawat_iqomah'>('attendance');
+  const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   
   const [attAttitude, setAttAttitude] = useState('Bagus');
@@ -263,11 +264,11 @@ export const Participants: React.FC = () => {
           <Button onClick={() => {
             selectedIds.forEach(id => {
               if (multiType === 'attendance') {
-                recordAttendance(id, '', attAttitude);
+                recordAttendance(id, '', attAttitude, customDate);
               } else if (multiType === 'sholawat_iqomah') {
-                recordSholawatIqomah(id, '', 'Bagus');
+                recordSholawatIqomah(id, '', 'Bagus', customDate);
               } else {
-                recordAdzan(id, '', 'Bagus');
+                recordAdzan(id, '', 'Bagus', customDate);
               }
             });
             setSelectedIds([]);
@@ -310,6 +311,11 @@ export const Participants: React.FC = () => {
               </div>
             </div>
           )}
+
+          <div>
+            <label className="label">Tanggal (Untuk Rapel)</label>
+            <input type="date" className="input w-full" value={customDate} onChange={e => setCustomDate(e.target.value)} />
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[40vh] overflow-y-auto p-1">
             {participants.filter(p => p.status === 'aktif').map(p => (

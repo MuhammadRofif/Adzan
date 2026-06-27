@@ -267,19 +267,8 @@ export const FourPlayerChessBoard: React.FC<{
   // Zoom Transform Calculation
   // Calculate center of board vs selected square to create a slight zoom effect
   const zoomStyle = useMemo(() => {
-    if (!selectedSquare) {
-      return {
-        transform: `scale(1) translate(0px, 0px)`,
-        transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-      };
-    }
-    
-    // Board is 14x14. Center is at 7,7.
-    const rOffset = (7 - selectedSquare.r) * 10; // Adjust translation weight
-    const cOffset = (7 - selectedSquare.c) * 10;
-    
     return {
-      transform: `scale(1.3) translate(${cOffset}px, ${rOffset}px)`,
+      transform: `scale(1) translate(0px, 0px)`,
       transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
     };
   }, [selectedSquare]);

@@ -206,7 +206,7 @@ const QuizForm: React.FC<{
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export const QuizPage: React.FC = () => {
-  const { quizzes, quizAttempts, participants, addQuiz, updateQuiz, toggleQuizActive, deleteQuiz } = useApp();
+  const { quizzes, quizAttempts, participants, addQuiz, updateQuiz, toggleQuizActive, deleteQuiz, addTransaction } = useApp();
   const [playModal, setPlayModal] = useState<{ quiz: Quiz; participantId: string } | null>(null);
   const [addModal, setAddModal] = useState(false);
   const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
@@ -455,7 +455,19 @@ export const QuizPage: React.FC = () => {
             setCaturPlayQuiz(null);
             if (winner !== 'draw') {
               const winnerName = caturParticipants[winner].name;
-              alert(`Permainan Selesai! Pemenangnya adalah: ${winnerName} 🏆`);
+              const winnerId = caturParticipants[winner].id;
+              alert(`Permainan Selesai! Pemenangnya adalah: ${winnerName} 🏆\nSelamat! ${winnerName} mendapatkan +5 Poin!`);
+              
+              // Memberikan poin 5 ke pemenang
+              addTransaction({
+                participantId: winnerId,
+                adminId: 'system',
+                type: "adjustment",
+                points: 5,
+                reason: `Menang Battle Royale Catur: ${caturPlayQuiz.title}`
+              });
+              
+              setResultModal({ score: 100, pts: 5 });
             } else {
               alert('Permainan Seri!');
             }

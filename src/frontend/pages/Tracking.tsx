@@ -26,6 +26,7 @@ export const Tracking: React.FC = () => {
   const [adzPrayer, setAdzPrayer] = useState('Ashar');
   const [adzAttitude, setAdzAttitude] = useState('Bagus');
   const [adzRole, setAdzRole] = useState<'adzan' | 'sholawat_iqomah'>('adzan');
+  const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
 
   const filteredAdzan = adzanLog.filter(a => a.participantName.toLowerCase().includes(search.toLowerCase()));
   const filteredAttendance = attendanceLog.filter(a => a.participantName.toLowerCase().includes(search.toLowerCase()));
@@ -152,7 +153,7 @@ export const Tracking: React.FC = () => {
       {/* Modals */}
       <Modal isOpen={attendanceModal} onClose={() => { setAttendanceModal(false); setAttParticipant(''); }} title="Catat Latihan & Sikap Bagus" size="sm"
         footer={<>
-          <Button onClick={() => { if (attParticipant) { recordAttendance(attParticipant, attPrayer); setAttendanceModal(false); setAttParticipant(''); } }} className="w-full sm:w-auto sm:ml-3" disabled={!attParticipant}>Simpan</Button>
+          <Button onClick={() => { if (attParticipant) { recordAttendance(attParticipant, attPrayer, "Bagus", customDate); setAttendanceModal(false); setAttParticipant(''); } }} className="w-full sm:w-auto sm:ml-3" disabled={!attParticipant}>Simpan</Button>
           <Button variant="ghost" onClick={() => { setAttendanceModal(false); setAttParticipant(''); }} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
         </>}
       >
@@ -164,6 +165,10 @@ export const Tracking: React.FC = () => {
           <Select label="Waktu Shalat" value={attPrayer} onChange={e => setAttPrayer(e.target.value)}>
             {PRAYER_TIMES.map(t => <option key={t} value={t}>{t}</option>)}
           </Select>
+          <div>
+            <label className="label">Tanggal (Untuk Rapel)</label>
+            <input type="date" className="input w-full" value={customDate} onChange={e => setCustomDate(e.target.value)} />
+          </div>
         </div>
       </Modal>
 
@@ -172,9 +177,9 @@ export const Tracking: React.FC = () => {
           <Button onClick={() => { 
             if (adzParticipant) { 
               if (adzRole === 'adzan') {
-                recordAdzan(adzParticipant, adzPrayer, adzAttitude); 
+                recordAdzan(adzParticipant, adzPrayer, adzAttitude, customDate); 
               } else {
-                recordSholawatIqomah(adzParticipant, adzPrayer, adzAttitude);
+                recordSholawatIqomah(adzParticipant, adzPrayer, adzAttitude, customDate);
               }
               setAdzanModal(false); 
               setAdzParticipant(''); 
@@ -206,6 +211,10 @@ export const Tracking: React.FC = () => {
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <label className="label">Tanggal (Untuk Rapel)</label>
+            <input type="date" className="input w-full" value={customDate} onChange={e => setCustomDate(e.target.value)} />
           </div>
         </div>
       </Modal>

@@ -56,25 +56,7 @@ export const Redeem: React.FC = () => {
         subtitle="Kelola paket hadiah dan permintaan penukaran poin"
       />
 
-      {/* Budget Card */}
-      <div className={cn('rounded-2xl p-5 mb-6 border', budgetStatus.usagePercent >= 100 ? 'bg-red-50 border-red-200' : budgetStatus.usagePercent >= 80 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200')}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            {budgetStatus.usagePercent >= 80 ? <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" /> : <Coins className="w-5 h-5 text-emerald-500 flex-shrink-0" />}
-            <div>
-              <p className="font-semibold text-gray-900">Status Budget Bulan Ini</p>
-              <p className="text-sm text-gray-600">Rp {(budgetStatus.usedBudget / 1000).toFixed(0)}k terpakai dari Rp {(budgetStatus.totalBudget / 1000).toFixed(0)}k</p>
-            </div>
-          </div>
-          <div className="sm:w-48">
-            <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>{budgetStatus.usagePercent}% terpakai</span>
-              <span>Sisa: Rp {((budgetStatus.totalBudget - budgetStatus.usedBudget) / 1000).toFixed(0)}k</span>
-            </div>
-            <ProgressBar value={budgetStatus.usagePercent} color={budgetStatus.usagePercent >= 80 ? 'bg-amber-500' : 'bg-emerald-500'} />
-          </div>
-        </div>
-      </div>
+
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6 w-fit">
@@ -115,7 +97,7 @@ export const Redeem: React.FC = () => {
                 </div>
               </div>
               <Button onClick={() => { setRedeemModal(pkg.id); setRedeemError(''); }}
-                variant={pkg.isAvailable ? 'primary' : 'secondary'} className="w-full" disabled={!pkg.isAvailable || budgetStatus.usagePercent >= 100}>
+                variant={pkg.isAvailable ? 'primary' : 'secondary'} className="w-full" disabled={!pkg.isAvailable}>
                 {pkg.isAvailable ? 'Redeem' : 'Tidak Tersedia'}
               </Button>
             </div>

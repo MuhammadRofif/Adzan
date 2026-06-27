@@ -34,24 +34,56 @@ export async function initializeDatabase(): Promise<void> {
     `);
     console.log('✓ Participants table created');
 
-    // Create points table
+    // Create adzan_schedule table
     await query(`
-      CREATE TABLE IF NOT EXISTS points (
+      CREATE TABLE IF NOT EXISTS adzan_schedule (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        participant_id UUID NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
-        attendance INT DEFAULT 0,
-        attitude INT DEFAULT 0,
-        adzan INT DEFAULT 0,
-        quiz INT DEFAULT 0,
-        total INT DEFAULT 0,
-        month INT NOT NULL,
-        year INT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(participant_id, month, year)
+        schedule_data JSONB NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    console.log('✓ Points table created');
+    console.log('✓ Adzan schedule table created');
+
+    // Create adzan_log table
+    await query(`
+      CREATE TABLE IF NOT EXISTS adzan_log (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        participant_id UUID NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+        prayer_time VARCHAR(50) NOT NULL,
+        attitude VARCHAR(50),
+        attitude_points INT DEFAULT 0,
+        adzan_points INT DEFAULT 0,
+        total INT DEFAULT 0,
+        date DATE NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('✓ Adzan log table created');
+
+    // Create attendance_log table
+    await query(`
+      CREATE TABLE IF NOT EXISTS attendance_log (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        participant_id UUID NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+        prayer_time VARCHAR(50) NOT NULL,
+        date DATE NOT NULL,
+        points INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('✓ Attendance log table created');
+
+    // Create budget_settings table
+    await query(`
+      CREATE TABLE IF NOT EXISTS budget_settings (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        total_budget INT NOT NULL DEFAULT 500000,
+        month VARCHAR(50) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('✓ Budget settings table created');
 
     // Create transactions table
     await query(`
@@ -62,7 +94,7 @@ export async function initializeDatabase(): Promise<void> {
         points INT NOT NULL,
         reason VARCHAR(255),
         admin_id UUID REFERENCES users(id),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
     console.log('✓ Transactions table created');
@@ -71,9 +103,13 @@ export async function initializeDatabase(): Promise<void> {
     await query(`
       CREATE TABLE IF NOT EXISTS redeem_packages (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
         diamond INT NOT NULL,
-        points INT NOT NULL,
-        cost_in_rupiah INT NOT NULL,
+        points_required INT NOT NULL,
+        weekly_quota INT NOT NULL DEFAULT 1,
+        budget_cost INT NOT NULL DEFAULT 0,
+        is_available BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -86,8 +122,12 @@ export async function initializeDatabase(): Promise<void> {
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         participant_id UUID NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
         package_id UUID NOT NULL REFERENCES redeem_packages(id),
-        points_deducted INT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        package_name VARCHAR(255) NOT NULL,
+        points_spent INT NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        processed_at TIMESTAMP,
+        processed_by VARCHAR(255)
       );
     `);
     console.log('✓ Redeem history table created');
@@ -98,27 +138,13 @@ export async function initializeDatabase(): Promise<void> {
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         title VARCHAR(255) NOT NULL,
         description TEXT,
-        mode VARCHAR(50) DEFAULT 'biasa',
+        questions JSONB NOT NULL DEFAULT '[]',
+        is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
     console.log('✓ Quizzes table created');
-
-    // Create questions table
-    await query(`
-      CREATE TABLE IF NOT EXISTS questions (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        quiz_id UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
-        text TEXT NOT NULL,
-        options TEXT[] NOT NULL,
-        correct_answer INT NOT NULL,
-        "order" INT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    console.log('✓ Questions table created');
 
     // Create quiz_attempts table
     await query(`
@@ -127,11 +153,40 @@ export async function initializeDatabase(): Promise<void> {
         participant_id UUID NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
         quiz_id UUID NOT NULL REFERENCES quizzes(id),
         score INT NOT NULL,
-        points_earned INT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        earned_points INT NOT NULL,
+        answers JSONB NOT NULL DEFAULT '[]',
+        completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
     console.log('✓ Quiz attempts table created');
+
+    // Create seasons table
+    await query(`
+      CREATE TABLE IF NOT EXISTS seasons (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('✓ Seasons table created');
+
+    // Create season_history table
+    await query(`
+      CREATE TABLE IF NOT EXISTS season_history (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        season_id UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        participant_id UUID NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+        final_points INT NOT NULL,
+        rank INT NOT NULL,
+        badge VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(season_id, participant_id)
+      );
+    `);
+    console.log('✓ Season history table created');
 
     // Create indexes for performance
     await query(`CREATE INDEX IF NOT EXISTS idx_participants_status ON participants(status);`);
@@ -141,6 +196,8 @@ export async function initializeDatabase(): Promise<void> {
     await query(`CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_redeem_history_participant_id ON redeem_history(participant_id);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_quiz_attempts_participant_id ON quiz_attempts(participant_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_season_history_participant_id ON season_history(participant_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_season_history_season_id ON season_history(season_id);`);
     console.log('✓ Indexes created');
 
     console.log('✓ Database initialization completed successfully');

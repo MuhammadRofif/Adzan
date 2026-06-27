@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useApp } from "../../context/AppContext";
 import { cn } from "../../utils/cn";
 import { AdzanEntry, Participant, PANGKAT_LEVELS, getPangkat } from "../../../shared/types";
+import confetti from "canvas-confetti";
 import { Modal } from "../../components/ui/Modal";
 import { Button } from "../../components/ui/Button";
 import { Award, Mic, CheckCircle2, BookOpen, Star, AlignCenter, History, TrendingUp, TrendingDown, Clock } from "lucide-react";
@@ -61,6 +62,8 @@ const Medal: React.FC<{ rank: number }> = ({ rank }) => {
 export const BocilDashboard: React.FC = () => {
   const { participants, points, adzanLog, attendanceLog, quizAttempts, quizzes, redeemHistory, schedule, transactions } =
     useApp();
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const prevPointsRef = useRef<{ [key: string]: number }>({});
   const [selectedUser, setSelectedUser] = useState<string | null>(() =>
     localStorage.getItem("bocil_id"),
   );
@@ -110,11 +113,18 @@ export const BocilDashboard: React.FC = () => {
       );
   }, [participants, points]);
 
+  const top1Pts = leaderboard.length > 0 ? (points[String(leaderboard[0]?.id)]?.total ?? 0) : 0;
+  const top2Pts = leaderboard.length > 1 ? (points[String(leaderboard[1]?.id)]?.total ?? 0) : 0;
+  const top3Pts = leaderboard.length > 2 ? (points[String(leaderboard[2]?.id)]?.total ?? 0) : 0;
+  const isFight12 = leaderboard.length >= 2 && (top1Pts - top2Pts) <= 5;
+  const isFight13 = leaderboard.length >= 3 && (top1Pts - top3Pts) <= 5;
+  const isFight23 = leaderboard.length >= 3 && (top2Pts - top3Pts) <= 5 && !isFight13;
+
   const activeModalRank = useMemo(() => {
     if (!viewParticipant) return null;
     return (
       leaderboard.findIndex(
-        (p) => String(p.id) === String(viewParticipant.id),
+        (p) => String(p.id) === String(viewParticipant!.id),
       ) + 1
     );
   }, [viewParticipant, leaderboard]);
@@ -128,6 +138,7 @@ export const BocilDashboard: React.FC = () => {
     "🏆 Siapa yang paling rajin bulan ini?",
   ];
   const [motivIdx, setMotivIdx] = useState(0);
+  const [showFireEffect, setShowFireEffect] = useState(false);
   useEffect(() => {
     const t = setInterval(
       () => setMotivIdx((i: number) => (i + 1) % motivations.length),
@@ -205,7 +216,7 @@ export const BocilDashboard: React.FC = () => {
 
   const neighboringFriends = useMemo(() => {
     if (!viewParticipant) return [];
-    const idx = leaderboard.findIndex((p) => p.id === viewParticipant.id);
+    const idx = leaderboard.findIndex((p) => p.id === viewParticipant!.id);
     if (idx === -1) return [];
 
     const neighbors = [];
@@ -851,39 +862,33 @@ export const BocilDashboard: React.FC = () => {
             style={{ animationDelay: "0.3s" }}
           >
             {selectedUser && myStats && myPangkat ? (
-              <div className="bg-white/15 border border-white/20 rounded-3xl p-6 text-white min-w-[320px]">
-                <div className="flex items-start gap-4 mb-4">
-                  <div
-                    className={cn(
-                      "w-16 h-16 rounded-2xl flex items-center justify-center text-4xl shadow-xl bg-gradient-to-br shrink-0 border-2 border-white/30 overflow-hidden",
-                      myPangkat?.color || "from-gray-400 to-gray-500",
-                    )}
-                  >
-                    {myInfo?.avatar_url ? (
-                      <img
-                        src={myInfo.avatar_url}
-                        alt={myInfo.nama}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      myInfo?.nama.charAt(0)
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="bg-white/20 px-3 py-1 rounded-xl border border-white/20 inline-block mb-2 shadow-sm">
-                      <p className="text-sm font-black text-white truncate">
-                        {myInfo?.nama}
-                      </p>
+              <div className="bg-white/15 border border-white/20 rounded-3xl p-6 text-white w-full">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-4 flex-1 min-w-0 pr-2">
+                    <div
+                      className={cn(
+                        "w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-xl bg-gradient-to-br shrink-0 border-2 border-white/30 overflow-hidden",
+                        myPangkat?.color || "from-gray-400 to-gray-500",
+                      )}
+                    >
+                      {myInfo?.avatar_url ? (
+                        <img
+                          src={myInfo.avatar_url}
+                          alt={myInfo.nama}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        myInfo?.nama.charAt(0) || "A"
+                      )}
                     </div>
-                    <div className="space-y-0.5">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-primary-200">
-                        Pangkat Kamu
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest leading-tight">
+                        Hai, {myInfo?.nama || "Prajurit"}!
                       </p>
-                      <p className="text-xl font-black font-heading leading-tight">
-                        {myPangkat?.emoji || "🪖"}{" "}
-                        {myPangkat?.title || "Prajurit Masjid"}
+                      <p className="text-xl font-black font-heading leading-tight mt-0.5">
+                        {myPangkat?.emoji || "🪖"} {myPangkat?.title || "Prajurit Masjid"}
                       </p>
-                      <p className="text-xs font-bold text-yellow-300">
+                      <p className="text-xs font-bold text-yellow-300 mt-1">
                         ✨ {myStats?.total || 0} Total Poin
                       </p>
                     </div>
@@ -929,7 +934,13 @@ export const BocilDashboard: React.FC = () => {
                   Ayo mulai berburu pahala! 🔥
                 </p>
                 <select
-                  className="bg-white/20 border border-white/30 rounded-xl px-4 py-2.5 text-white outline-none w-full appearance-none cursor-pointer hover:bg-white/30 transition-all font-bold"
+                  className="bg-white/20 border border-white/30 rounded-xl pl-4 pr-10 py-2.5 text-white outline-none w-full appearance-none cursor-pointer hover:bg-white/30 transition-all font-bold truncate"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                    backgroundPosition: `right 0.75rem center`,
+                    backgroundRepeat: `no-repeat`,
+                    backgroundSize: `1.5em 1.5em`
+                  }}
                   value={selectedUser || ""}
                   onChange={(e) => setSelectedUser(e.target.value)}
                 >
@@ -984,7 +995,7 @@ export const BocilDashboard: React.FC = () => {
                   <div
                     onClick={() => setViewParticipant(leaderboard[1])}
                     className={cn(
-                      "bocil-podium-item animate-fade-in cursor-pointer group",
+                      "bocil-podium-item animate-fade-in cursor-pointer group relative",
                       selectedUser === leaderboard[1].id && "scale-110 z-20",
                     )}
                     style={{ animationDelay: "0.2s" }}
@@ -1041,14 +1052,26 @@ export const BocilDashboard: React.FC = () => {
                 )}
 
                 {/* 1st Place */}
-                <div
-                  onClick={() => setViewParticipant(leaderboard[0])}
-                  className={cn(
-                    "bocil-podium-item animate-fade-in cursor-pointer group",
-                    selectedUser === leaderboard[0].id && "scale-110 z-20",
-                  )}
-                  style={{ animationDelay: "0.1s" }}
-                >
+                  <div
+                    onClick={() => setViewParticipant(leaderboard[0])}
+                    className={cn(
+                      "bocil-podium-item animate-fade-in cursor-pointer group relative",
+                      selectedUser === leaderboard[0].id && "scale-110 z-20",
+                    )}
+                    style={{ animationDelay: "0.1s" }}
+                  >
+                    {isFight12 && (
+                      <div className="absolute top-10 sm:top-12 -left-6 sm:-left-8 z-30 animate-pulse flex flex-col items-center">
+                        <span className="text-xl sm:text-2xl drop-shadow-lg scale-110">⚔️</span>
+                        <span className="text-[7px] sm:text-[9px] font-black text-red-600 bg-white/90 px-1 rounded shadow border border-red-200 mt-0.5">SENGIT!</span>
+                      </div>
+                    )}
+                    {isFight13 && (
+                      <div className="absolute top-10 sm:top-12 -right-6 sm:-right-8 z-30 animate-pulse flex flex-col items-center" style={{ animationDelay: "0.5s" }}>
+                        <span className="text-xl sm:text-2xl drop-shadow-lg scale-110">⚔️</span>
+                        <span className="text-[7px] sm:text-[9px] font-black text-red-600 bg-white/90 px-1 rounded shadow border border-red-200 mt-0.5">SENGIT!</span>
+                      </div>
+                    )}
                   <div
                     className={cn(
                       "bocil-avatar bg-gradient-to-br from-yellow-400 to-amber-500 text-2xl sm:text-3xl w-16 h-16 sm:w-20 sm:h-20 shadow-lg shadow-yellow-300/50 group-hover:scale-110 transition-transform relative overflow-hidden",
@@ -1107,11 +1130,17 @@ export const BocilDashboard: React.FC = () => {
                   <div
                     onClick={() => setViewParticipant(leaderboard[2])}
                     className={cn(
-                      "bocil-podium-item animate-fade-in cursor-pointer group",
+                      "bocil-podium-item animate-fade-in cursor-pointer group relative",
                       selectedUser === leaderboard[2].id && "scale-110 z-20",
                     )}
                     style={{ animationDelay: "0.3s" }}
                   >
+                    {isFight23 && (
+                      <div className="absolute top-8 sm:top-10 -left-6 sm:-left-8 z-30 animate-pulse flex flex-col items-center">
+                        <span className="text-xl sm:text-2xl drop-shadow-lg scale-110">⚔️</span>
+                        <span className="text-[7px] sm:text-[9px] font-black text-red-600 bg-white/90 px-1 rounded shadow border border-red-200 mt-0.5">SENGIT!</span>
+                      </div>
+                    )}
                     <div
                       className={cn(
                         "bocil-avatar bg-gradient-to-br from-orange-300 to-orange-400 text-xl sm:text-2xl w-14 h-14 sm:w-16 sm:h-16 group-hover:scale-110 transition-transform relative overflow-hidden",
@@ -1181,18 +1210,26 @@ export const BocilDashboard: React.FC = () => {
                       : leaderboard.length >= 2
                         ? 2
                         : 1;
+                  const pIdx = i + rankOffset;
+                  const prevPts = pIdx > 0 ? (points[String(leaderboard[pIdx - 1]?.id)]?.total ?? 0) : null;
+                  const nextPts = pIdx < leaderboard.length - 1 ? (points[String(leaderboard[pIdx + 1]?.id)]?.total ?? 0) : null;
+                  const isSengit = (prevPts !== null && (prevPts - totalPts) <= 5) || (nextPts !== null && (totalPts - nextPts) <= 5);
+
                   return (
                     <div
                       key={p.id}
                       onClick={() => setViewParticipant(p)}
                       className={cn(
-                        "bocil-leaderboard-row animate-fade-in cursor-pointer group hover:bg-primary-50 transition-all",
+                        "bocil-leaderboard-row animate-fade-in cursor-pointer group hover:bg-primary-50 transition-all relative overflow-hidden",
                         selectedUser === p.id &&
                           "bg-gradient-to-r from-pink-50 to-white border-pink-200 ring-2 ring-pink-100 shadow-[0_0_15px_rgba(236,72,153,0.15)]",
                       )}
                       style={{ animationDelay: `${(i + 4) * 0.05}s` }}
                     >
-                      <div className="flex items-center gap-3">
+                      {isSengit && (
+                        <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-red-500/10 to-transparent pointer-events-none animate-pulse z-0"></div>
+                      )}
+                      <div className="flex items-center gap-3 relative z-10">
                         <span
                           className={cn(
                             "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold",
@@ -1244,7 +1281,12 @@ export const BocilDashboard: React.FC = () => {
                           </p>
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right flex flex-col items-end justify-center relative z-10">
+                        {isSengit && (
+                          <span className="text-[8px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-black tracking-tighter mb-0.5 border border-red-200 animate-pulse">
+                            ⚔️ SENGIT!
+                          </span>
+                        )}
                         <p className="font-extrabold text-primary-600">
                           {totalPts}{" "}
                           <span className="text-[10px] text-gray-400 font-normal">
@@ -1367,53 +1409,7 @@ export const BocilDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Keterangan Warna Avatar Card */}
-          <div className="bocil-card bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-            <h3 className="font-bold text-gray-900 text-sm mb-3 flex items-center gap-2">
-              🎨 Panduan Warna Avatar
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-100 text-gray-400 font-bold">
-                    <th className="pb-2 font-semibold">Item</th>
-                    <th className="pb-2 font-semibold">Tampilan</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50 text-gray-700">
-                  <tr>
-                    <td className="py-2.5 font-bold flex items-center gap-1">📢 Adzan</td>
-                    <td className="py-2.5">
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span className="px-1.5 py-0.5 rounded-md bg-emerald-500 text-white font-black text-[9px]">Hijau</span>
-                        <span className="px-1.5 py-0.5 rounded-md bg-yellow-500 text-white font-black text-[9px]">Kuning</span>
-                        <span className="px-1.5 py-0.5 rounded-md bg-red-500 text-white font-black text-[9px]">Merah</span>
-                        <span className="text-[10px] text-gray-500 block sm:inline mt-0.5 sm:mt-0 font-medium">(Sesuai Sikap)</span>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 font-bold flex items-center gap-1">📿 Sholawat + Iqomah</td>
-                    <td className="py-2.5">
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span className="px-1.5 py-0.5 rounded-md bg-emerald-500 text-white font-black text-[9px]">Hijau</span>
-                        <span className="px-1.5 py-0.5 rounded-md bg-yellow-500 text-white font-black text-[9px]">Kuning</span>
-                        <span className="px-1.5 py-0.5 rounded-md bg-red-500 text-white font-black text-[9px]">Merah</span>
-                        <span className="text-[10px] text-gray-500 block sm:inline mt-0.5 sm:mt-0 font-medium">(Sesuai Sikap)</span>
-                      </div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 font-bold flex items-center gap-1">⭐ Latihan</td>
-                    <td className="py-2.5">
-                      <span className="px-1.5 py-0.5 rounded-md bg-blue-500 text-white font-black text-[9px]">Biru</span>
-                      <span className="text-[10px] text-gray-500 ml-1 font-medium">(Beda dengan adzan)</span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+
         </div>
       </div>
 
@@ -1677,31 +1673,84 @@ export const BocilDashboard: React.FC = () => {
               Target Prestasi
             </span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {PANGKAT_LEVELS.map((pl, idx) => (
+          <div className="grid grid-cols-2 gap-3">
+            {PANGKAT_LEVELS.map((pl, idx) => {
+              const isLegenda = pl.title === "Legenda Muadzin";
+              const isCurrent = myPangkat?.title === pl.title;
+              return (
               <div
                 key={pl.title}
+                onClick={() => {
+                  if (isLegenda) {
+                    if (showFireEffect) return; // Prevent spam clicks
+                    setShowFireEffect(true);
+                    setTimeout(() => setShowFireEffect(false), 3000);
+                    
+                    const duration = 3000;
+                    const animationEnd = Date.now() + duration;
+                    const fireShape = typeof (confetti as any).shapeFromText === 'function' ? (confetti as any).shapeFromText({ text: '🔥', scalar: 2 }) : 'circle';
+                    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 10000, colors: ['#ef4444', '#f97316', '#f59e0b', '#fbbf24', '#ff0000'], shapes: [fireShape] };
+
+                    const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
+
+                    const interval: any = setInterval(function() {
+                      const timeLeft = animationEnd - Date.now();
+
+                      if (timeLeft <= 0) {
+                        return clearInterval(interval);
+                      }
+
+                      const particleCount = 50 * (timeLeft / duration);
+                      confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
+                      confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
+                    }, 250);
+                  }
+                }}
                 className={cn(
                   "relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all group overflow-hidden",
-                  myPangkat?.title === pl.title
+                  isLegenda ? "col-span-2 cursor-pointer hover:ring-4 hover:ring-orange-400/50" : "",
+                  isCurrent
                     ? "bg-amber-50 border-amber-400 shadow-lg scale-105 z-10"
-                    : "bg-white border-gray-100 hover:border-primary-200",
+                    : isLegenda
+                      ? "bg-gradient-to-br from-yellow-50 to-amber-100/50 border-yellow-300 hover:border-yellow-400 hover:shadow-lg shadow-yellow-200/50"
+                      : "bg-white border-gray-100 hover:border-primary-200",
                 )}
               >
-                {myPangkat?.title === pl.title && (
+                {isLegenda && showFireEffect && (
+                  <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-yellow-950/90 backdrop-blur-sm animate-in fade-in zoom-in duration-300">
+                    <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 via-orange-500 to-red-600 drop-shadow-[0_2px_4px_rgba(239,68,68,0.8)] mb-1">
+                      LEGEND MASJID
+                    </h2>
+                    <p className="text-xs text-red-500 font-black animate-pulse mb-1">Menyala Abangku! 🔥🔥🔥</p>
+                    <p className="text-[9px] text-yellow-300 font-bold italic animate-bounce">Rega bulan depan menuju sini! 🚀</p>
+                  </div>
+                )}
+                {isCurrent && (
                   <div className="absolute top-0 left-0 w-full h-1.5 bg-amber-400"></div>
                 )}
-                <span className="text-3xl mb-1 group-hover:scale-125 transition-transform duration-300">
+                {isLegenda && (
+                  <div className="absolute inset-0 bg-yellow-400/5 mix-blend-overlay pointer-events-none"></div>
+                )}
+                <div className={cn(
+                  "mb-1 group-hover:scale-125 transition-transform duration-300 flex items-center justify-center",
+                  isLegenda ? "text-5xl drop-shadow-md" : "text-3xl"
+                )}>
                   {pl.emoji}
-                </span>
-                <span className="text-[10px] font-black text-gray-800 text-center uppercase tracking-tighter mb-1 leading-none">
+                </div>
+                <span className={cn(
+                  "font-black text-center uppercase tracking-tighter mb-1 leading-none",
+                  isLegenda ? "text-sm text-yellow-900 drop-shadow-sm" : "text-[10px] text-gray-800"
+                )}>
                   {pl.title}
                 </span>
-                <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 rounded-full">
+                <span className={cn(
+                  "font-bold px-2 rounded-full",
+                  isLegenda ? "text-xs text-white bg-gradient-to-r from-yellow-500 to-amber-500 shadow-sm px-3 py-0.5 mt-1" : "text-[10px] text-amber-600 bg-amber-100"
+                )}>
                   {pl.min} Pts
                 </span>
               </div>
-            ))}
+            )})}
           </div>
         </div>
 
@@ -1740,7 +1789,7 @@ export const BocilDashboard: React.FC = () => {
                 bg: "bg-yellow-50",
               },
               {
-                label: "Jawab Quiz Benar",
+                label: "Misi Quiz Selesai",
                 points: "+1 Poin",
                 extra: "Per Jawaban",
                 emoji: "📝",
@@ -1779,41 +1828,67 @@ export const BocilDashboard: React.FC = () => {
       {viewParticipant && (
         <Modal
           isOpen={!!viewParticipant}
-          onClose={() => setViewParticipant(null)}
+          onClose={() => {
+            setViewParticipant(null);
+            setPreviewImage(null);
+          }}
           title="Rincian Prestasi"
           size="sm"
         >
-          <div className="space-y-3.5">
+          <div className="relative space-y-3.5">
+            {previewImage && (
+              <div 
+                className="absolute inset-0 z-50 flex items-center justify-center bg-transparent rounded-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
+                onClick={() => setPreviewImage(null)}
+              >
+                <img 
+                  src={previewImage} 
+                  alt="Preview Profil" 
+                  className="w-full h-full object-cover cursor-pointer" 
+                  onClick={(e) => { e.stopPropagation(); setPreviewImage(null); }} 
+                />
+              </div>
+            )}
             {/* Header info - Side-by-Side Premium Layout! */}
             <div className="flex items-center gap-3 bg-gray-50/50 p-3 rounded-2xl border border-gray-100/50">
-              <div className="w-16 h-16 rounded-2xl bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-2xl overflow-hidden shadow-inner border-2 border-white flex-shrink-0">
-                {viewParticipant.avatar_url ? (
+              <div 
+                className={cn(
+                  "w-16 h-16 rounded-2xl bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-2xl overflow-hidden shadow-inner border-2 border-white flex-shrink-0",
+                  viewParticipant!.avatar_url ? "cursor-pointer hover:opacity-80 transition-opacity ring-2 ring-transparent hover:ring-primary-300" : ""
+                )}
+                onClick={() => {
+                  if (viewParticipant!.avatar_url) {
+                    setPreviewImage(viewParticipant!.avatar_url);
+                  }
+                }}
+              >
+                {viewParticipant!.avatar_url ? (
                   <img
-                    src={viewParticipant.avatar_url}
-                    alt={viewParticipant.nama}
+                    src={viewParticipant!.avatar_url}
+                    alt={viewParticipant!.nama}
                     className="w-full h-full object-cover"
                     loading="lazy"
                     decoding="async"
                   />
                 ) : (
-                  viewParticipant.nama.charAt(0)
+                  viewParticipant!.nama.charAt(0)
                 )}
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-lg font-black text-gray-900 font-heading truncate leading-tight">
-                  {viewParticipant.nama}
+                  {viewParticipant!.nama}
                 </h3>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-700 text-[10px] font-bold uppercase tracking-wider">
                     <span>
                       {
-                        getPangkat(points[viewParticipant.id]?.total ?? 0).current
+                        getPangkat(points[viewParticipant!.id]?.total ?? 0).current
                           .emoji
                       }
                     </span>
                     <span>
                       {
-                        getPangkat(points[viewParticipant.id]?.total ?? 0).current
+                        getPangkat(points[viewParticipant!.id]?.total ?? 0).current
                           .title
                       }
                     </span>
@@ -1833,7 +1908,7 @@ export const BocilDashboard: React.FC = () => {
               {[
                 {
                   label: "Total Poin",
-                  value: `${points[viewParticipant.id]?.total ?? 0} Pts`,
+                  value: `${points[viewParticipant!.id]?.total ?? 0} Pts`,
                   icon: Award,
                   color: "text-amber-600",
                   bg: "bg-amber-50/70 border-amber-100/50",
@@ -1842,28 +1917,28 @@ export const BocilDashboard: React.FC = () => {
                 },
                 {
                   label: "Adzan",
-                  value: `${points[viewParticipant.id]?.adzanCount ?? 0}x`,
+                  value: `${points[viewParticipant!.id]?.adzanCount ?? 0}x`,
                   icon: Mic,
                   color: "text-primary-600",
                   bg: "bg-primary-50/70 border-primary-100/50",
                 },
                 {
                   label: "Sholawat + Iqomah",
-                  value: `${points[viewParticipant.id]?.sholawatIqomahCount ?? 0}x`,
+                  value: `${points[viewParticipant!.id]?.sholawatIqomahCount ?? 0}x`,
                   icon: Star,
                   color: "text-blue-600",
                   bg: "bg-blue-50/70 border-blue-100/50",
                 },
                 {
                   label: "Latihan",
-                  value: `${points[viewParticipant.id]?.attendanceCount ?? 0}x`,
+                  value: `${points[viewParticipant!.id]?.attendanceCount ?? 0}x`,
                   icon: CheckCircle2,
                   color: "text-emerald-600",
                   bg: "bg-emerald-50/70 border-emerald-100/50",
                 },
                 {
-                  label: "Jawab Quiz",
-                  value: `${points[viewParticipant.id]?.quizCount ?? 0}x`,
+                  label: "Misi Quiz Selesai",
+                  value: `${points[viewParticipant!.id]?.quizCount ?? 0}x`,
                   icon: BookOpen,
                   color: "text-purple-600",
                   bg: "bg-purple-50/70 border-purple-100/50",
@@ -1894,19 +1969,19 @@ export const BocilDashboard: React.FC = () => {
 
 
             {/* Next Rank Progress in Modal - Super Compact! */}
-            {getPangkat(points[viewParticipant.id]?.total ?? 0).next && (
+            {getPangkat(points[viewParticipant!.id]?.total ?? 0).next && (
               <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
                 <div className="flex justify-between text-[9px] font-black uppercase mb-1.5">
                   <span className="text-gray-400">
                     Target Selanjutnya:{" "}
                     {
-                      getPangkat(points[viewParticipant.id]?.total ?? 0).next
+                      getPangkat(points[viewParticipant!.id]?.total ?? 0).next
                         ?.title
                     }
                   </span>
                   <span className="text-primary-600">
-                    {getPangkat(points[viewParticipant.id]?.total ?? 0).next!
-                      .min - (points[viewParticipant.id]?.total ?? 0)}{" "}
+                    {getPangkat(points[viewParticipant!.id]?.total ?? 0).next!
+                      .min - (points[viewParticipant!.id]?.total ?? 0)}{" "}
                     poin lagi
                   </span>
                 </div>
@@ -1914,7 +1989,7 @@ export const BocilDashboard: React.FC = () => {
                   <div
                     className="h-full bg-primary-500 rounded-full transition-all duration-1000"
                     style={{
-                      width: `${Math.min(100, Math.round((((points[viewParticipant.id]?.total ?? 0) - getPangkat(points[viewParticipant.id]?.total ?? 0).current.min) / (getPangkat(points[viewParticipant.id]?.total ?? 0).next!.min - getPangkat(points[viewParticipant.id]?.total ?? 0).current.min)) * 100))}%`,
+                      width: `${Math.min(100, Math.round((((points[viewParticipant!.id]?.total ?? 0) - getPangkat(points[viewParticipant!.id]?.total ?? 0).current.min) / (getPangkat(points[viewParticipant!.id]?.total ?? 0).next!.min - getPangkat(points[viewParticipant!.id]?.total ?? 0).current.min)) * 100))}%`,
                     }}
                   />
                 </div>
@@ -1955,7 +2030,7 @@ export const BocilDashboard: React.FC = () => {
         <Modal
           isOpen={showHistoryModal}
           onClose={() => setShowHistoryModal(false)}
-          title={`Riwayat Poin - ${viewParticipant.nama}`}
+          title={`Riwayat Poin - ${viewParticipant!.nama}`}
         >
           <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
             <div className="bg-primary-50 rounded-xl p-4 flex items-center justify-between mb-4 border border-primary-100 shadow-sm">
@@ -1966,7 +2041,7 @@ export const BocilDashboard: React.FC = () => {
                 <div>
                   <p className="text-xs text-primary-600 font-bold uppercase tracking-wider">Total Poin Saat Ini</p>
                   <p className="text-2xl font-black text-primary-800">
-                    {points[viewParticipant.id]?.total ?? 0} <span className="text-sm font-bold text-primary-600">pts</span>
+                    {points[viewParticipant!.id]?.total ?? 0} <span className="text-sm font-bold text-primary-600">pts</span>
                   </p>
                 </div>
               </div>
@@ -1974,7 +2049,7 @@ export const BocilDashboard: React.FC = () => {
 
             <div className="relative border-l-2 border-gray-100 pl-4 ml-2 space-y-6">
               {(() => {
-                const myId = String(viewParticipant.id);
+                const myId = String(viewParticipant!.id);
                 const allEvents: any[] = [];
 
                 // 1. Adzan & Sholawat
@@ -2118,7 +2193,7 @@ export const BocilDashboard: React.FC = () => {
                 });
               })()}
 
-              {transactions.filter(t => String(t.participantId) === String(viewParticipant.id)).length === 0 && (
+              {transactions.filter(t => String(t.participantId) === String(viewParticipant!.id)).length === 0 && (
                 <div className="text-center py-8 text-gray-400">
                   <div className="text-4xl mb-2">👻</div>
                   <p className="font-semibold">Belum ada riwayat poin.</p>

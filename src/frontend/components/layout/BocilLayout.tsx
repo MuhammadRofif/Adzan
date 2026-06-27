@@ -7,6 +7,7 @@ const bocilNavItems = [
   { name: 'Dashboard', href: '/', emoji: '🏠' },
   { name: 'Quiz', href: '/quiz', emoji: '📝' },
   { name: 'Hadiah', href: '/redeem', emoji: '🎁' },
+  { name: 'Juara', href: '/seasons', emoji: '🏆' },
 ];
 
 export const BocilLayout: React.FC = () => {

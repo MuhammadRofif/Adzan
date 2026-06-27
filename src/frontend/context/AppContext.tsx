@@ -20,6 +20,8 @@ import {
   AdzanEntry,
   TransactionType,
   getPangkat,
+  Season,
+  SeasonHistory,
 } from "../../shared/types";
 import {
   mockRedeemPackages,
@@ -49,6 +51,7 @@ interface AppContextType {
     participantId: string,
     prayerTime: string,
     attitude?: string,
+    customDate?: string
   ) => void;
 
   // Adzan
@@ -57,11 +60,13 @@ interface AppContextType {
     participantId: string,
     prayerTime: string,
     attitude: string,
+    customDate?: string
   ) => void;
   recordSholawatIqomah: (
     participantId: string,
     prayerTime: string,
     attitude: string,
+    customDate?: string
   ) => void;
 
   // Redeem
@@ -109,6 +114,12 @@ interface AppContextType {
   // Schedule
   schedule: Record<string, Record<string, string>>;
   updateSchedule: (newSchedule: Record<string, Record<string, string>> | ((prev: Record<string, Record<string, string>>) => Record<string, Record<string, string>>)) => void;
+
+  // Season
+  activeSeason: Season | null;
+  allSeasons: Season[];
+  seasonHistory: SeasonHistory[];
+  endSeason: (nextSeasonName: string) => Promise<{ success: boolean; message: string }>;
 }
 
 type PointValue = {
@@ -243,6 +254,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     type: "none" | "attendance" | "adzan";
   }>({ isOpen: false, type: "none" });
 
+  const [activeSeason, setActiveSeason] = useState<Season | null>(null);
+  const [allSeasons, setAllSeasons] = useState<Season[]>([]);
+  const [seasonHistory, setSeasonHistory] = useState<SeasonHistory[]>([]);
+
   // ─── Initial Load ───────────────────────────────────────────────────────────
   const loadAllData = useCallback(async () => {
     // Mutex: kalau sedang load, tandai pending dan keluar
@@ -254,6 +269,71 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     pendingLoadRef.current = false;
     setIsLoading(true);
     try {
+      // 1. Fetch seasons gracefully (might not exist yet)
+      let currentActiveSeason: Season | null = null;
+      let historyData: SeasonHistory[] = [];
+
+      try {
+        const { data: seasonsData } = await supabase
+          .from("seasons")
+          .select("*")
+          .order("start_date", { ascending: false });
+          
+        if (seasonsData && seasonsData.length > 0) {
+          const mappedSeasons = seasonsData.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            startDate: new Date(s.start_date),
+            endDate: s.end_date ? new Date(s.end_date) : undefined,
+            createdAt: new Date(s.created_at)
+          }));
+          currentActiveSeason = mappedSeasons.find(s => !s.endDate) || mappedSeasons[0];
+          setActiveSeason(currentActiveSeason);
+          setAllSeasons(mappedSeasons);
+
+          const { data: hData } = await supabase.from("season_history").select("*");
+          if (hData) {
+            historyData = hData.map((h: any) => ({
+              id: h.id,
+              seasonId: h.season_id,
+              participantId: h.participant_id,
+              finalPoints: h.final_points,
+              rank: h.rank,
+              badge: h.badge,
+              createdAt: new Date(h.created_at)
+            }));
+            setSeasonHistory(historyData);
+          }
+        }
+      } catch (err) {
+        console.warn("Seasons table might not exist yet.", err);
+      }
+
+      // 2. Prepare the base query for logs based on active season
+      let attQuery = supabase.from("attendance_log").select("*").order("date", { ascending: false }).limit(10000);
+      let adzQuery = supabase.from("adzan_log").select("*").order("date", { ascending: false }).limit(10000);
+      let qaQuery = supabase.from("quiz_attempts").select("*").order("completed_at", { ascending: false }).limit(10000);
+      let trxQuery = supabase.from("transactions").select("*").order("timestamp", { ascending: false }).limit(10000);
+      let rhQuery = supabase.from("redeem_history").select("*").order("requested_at", { ascending: false }).limit(10000);
+
+      if (currentActiveSeason) {
+        const startStr = currentActiveSeason.startDate.toISOString();
+        attQuery = attQuery.gte("date", startStr);
+        adzQuery = adzQuery.gte("date", startStr);
+        qaQuery = qaQuery.gte("completed_at", startStr);
+        trxQuery = trxQuery.gte("timestamp", startStr);
+        rhQuery = rhQuery.gte("requested_at", startStr);
+        
+        if (currentActiveSeason.endDate) {
+          const endStr = currentActiveSeason.endDate.toISOString();
+          attQuery = attQuery.lte("date", endStr);
+          adzQuery = adzQuery.lte("date", endStr);
+          qaQuery = qaQuery.lte("completed_at", endStr);
+          trxQuery = trxQuery.lte("timestamp", endStr);
+          rhQuery = rhQuery.lte("requested_at", endStr);
+        }
+      }
+
       const [
         { data: pData },
         { data: tData },
@@ -262,18 +342,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         { data: rpData },
         { data: rhData },
         { data: qData },
-        { data: qaData },
-        { data: bData },
+        { data: qaData }
       ] = await Promise.all([
         supabase.from("participants").select("*").order("nama").limit(500),
-        supabase.from("transactions").select("*").order("timestamp", { ascending: false }).limit(10000), // PENTING: semua transaksi harus terbaca untuk kalkulasi poin yang benar
-        supabase.from("attendance_log").select("*").order("date", { ascending: false }).limit(5000),
-        supabase.from("adzan_log").select("*").order("date", { ascending: false }).limit(5000),
+        trxQuery, // PENTING: semua transaksi harus terbaca untuk kalkulasi poin yang benar
+        attQuery,
+        adzQuery,
         supabase.from("redeem_packages").select("*").order("points_required").limit(100),
-        supabase.from("redeem_history").select("*").order("requested_at", { ascending: false }).limit(1000),
+        rhQuery,
         supabase.from("quizzes").select("*").order("created_at", { ascending: false }).limit(200),
-        supabase.from("quiz_attempts").select("*").order("completed_at", { ascending: false }).limit(5000),
-        supabase.from("budget_settings").select("*").limit(1),
+        qaQuery
       ]);
 
       // Sinkronisasi jadwal Adzan dari Supabase
@@ -443,21 +521,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
 
       setPoints(pointMap);
 
-      if (bData && bData[0]) {
-        const usedBudget = mappedRedeemHistory.filter((r: any) => r.status === 'approved')
-          .reduce((sum: number, r: any) => {
-            const pkg = rpData?.find((pkg: any) => pkg.id === r.packageId);
-            return sum + (pkg?.budget_cost ?? 0);
-          }, 0);
-        
-        setBudgetStatus({
-          totalBudget: bData[0].total_budget,
-          usedBudget,
-          usagePercent: Math.round((usedBudget / bData[0].total_budget) * 100),
-          warning: (usedBudget / bData[0].total_budget) >= 0.8,
-          month: bData[0].month,
-        });
-      }
+
 
     } catch (error) {
       console.error("Error loading data from Supabase:", error);
@@ -574,7 +638,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   const recordAttendance = useCallback(
-    async (participantId: string | number, prayerTime: string, attitude: string = "Bagus") => {
+    async (participantId: string | number, prayerTime: string, attitude: string = "Bagus", customDate?: string) => {
       const participant = participants.find((p) => String(p.id) === String(participantId));
       if (!participant) return;
 
@@ -589,7 +653,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         participant_id: participantId,
         prayer_time: prayerTime,
         points: pointsToAdd,
-        date: new Date().toISOString().split("T")[0]
+        date: customDate || new Date().toISOString().split("T")[0]
       }]);
 
       if (error) {
@@ -612,7 +676,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   const recordAdzan = useCallback(
-    async (participantId: string | number, prayerTime: string, attitude: string) => {
+    async (participantId: string | number, prayerTime: string, attitude: string, customDate?: string) => {
       const participant = participants.find((p) => String(p.id) === String(participantId));
       if (!participant) return;
       
@@ -624,7 +688,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         attitude_points: 0,
         adzan_points: 10,
         total: totalPoints,
-        date: new Date().toISOString().split("T")[0]
+        date: customDate || new Date().toISOString().split("T")[0]
       }]);
 
       if (error) {
@@ -647,7 +711,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   const recordSholawatIqomah = useCallback(
-    async (participantId: string | number, prayerTime: string, attitude: string) => {
+    async (participantId: string | number, prayerTime: string, attitude: string, customDate?: string) => {
       const participant = participants.find((p) => String(p.id) === String(participantId));
       if (!participant) return;
       
@@ -659,7 +723,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         attitude_points: 0,
         adzan_points: 8,
         total: totalPoints,
-        date: new Date().toISOString().split("T")[0]
+        date: customDate || new Date().toISOString().split("T")[0]
       }]);
 
       if (error) {
@@ -692,23 +756,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       if (participantPoints < pkg.pointsRequired)
         return { success: false, message: "Poin tidak mencukupi." };
       
-      const now = new Date();
-      const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
-      startOfWeek.setHours(0, 0, 0, 0);
-
-      const thisWeekRedeems = redeemHistory.filter(
-        (r) =>
-          String(r.participantId) === String(participantId) &&
-          String(r.packageId) === String(packageId) &&
-          r.status !== "rejected" &&
-          new Date(r.requestedAt) >= startOfWeek
-      ).length;
+      // Weekly quota check removed by admin request
       
-      if (thisWeekRedeems >= pkg.weeklyQuota)
-        return { success: false, message: "Kuota redeem mingguan kamu sudah habis. Coba lagi minggu depan!" };
-      
-      if (budgetStatus.usedBudget + pkg.budgetCost > budgetStatus.totalBudget)
-        return { success: false, message: "Budget bulan ini sudah habis." };
+      // Budget check removed by admin request
 
       const { error } = await supabase.from("redeem_history").insert([{
         participant_id: participantId,
@@ -1010,6 +1060,59 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     }
   }, [loadAllData, showToast]);
 
+  const endSeason = useCallback(async (nextSeasonName: string) => {
+    if (!activeSeason) {
+      return { success: false, message: "Tidak ada season aktif saat ini." };
+    }
+
+    try {
+      // 1. Get current leaderboard
+      const leaderboard = Object.entries(points)
+        .map(([id, p]) => ({
+          participantId: id,
+          finalPoints: p.total
+        }))
+        .sort((a, b) => b.finalPoints - a.finalPoints);
+      
+      // 2. Prepare season history entries
+      const historyEntries = leaderboard.map((p, index) => {
+        let badge: 'gold' | 'silver' | 'bronze' | null = null;
+        if (index === 0) badge = 'gold';
+        else if (index === 1) badge = 'silver';
+        else if (index === 2) badge = 'bronze';
+        
+        return {
+          season_id: activeSeason.id,
+          participant_id: p.participantId,
+          final_points: p.finalPoints,
+          rank: index + 1,
+          badge
+        };
+      });
+
+      // 3. Update current season end_date
+      const now = new Date();
+      await supabase.from("seasons").update({ end_date: now.toISOString() }).eq("id", activeSeason.id);
+
+      // 4. Insert into season_history
+      if (historyEntries.length > 0) {
+        await supabase.from("season_history").insert(historyEntries);
+      }
+
+      // 5. Create next season
+      await supabase.from("seasons").insert({
+        name: nextSeasonName,
+        start_date: now.toISOString()
+      });
+
+      showToast(`Season ${activeSeason.name} berhasil diakhiri! Pemenang telah disimpan.`, "success");
+      await loadAllData();
+      return { success: true, message: "Season berhasil diakhiri." };
+    } catch (err: any) {
+      return { success: false, message: err.message || "Gagal mengakhiri season." };
+    }
+  }, [activeSeason, points, showToast, loadAllData]);
+
   const contextValue = useMemo(() => ({
     participants,
     addParticipant,
@@ -1044,6 +1147,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     updateParticipantAvatar,
     schedule,
     updateSchedule,
+    activeSeason,
+    allSeasons,
+    seasonHistory,
+    endSeason,
   }), [
     participants, addParticipant, updateParticipantStatus, points,
     transactions, addTransaction, attendanceLog, recordAttendance,
@@ -1052,6 +1159,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     submitQuiz, addQuiz, updateQuiz, toggleQuizActive, deleteQuiz,
     budgetStatus, toast, showToast, isLoading, quickAbsen, setQuickAbsen,
     seedDatabase, uploadAvatar, updateParticipantAvatar, schedule, updateSchedule,
+    activeSeason, allSeasons, seasonHistory, endSeason,
   ]);
 
   return (

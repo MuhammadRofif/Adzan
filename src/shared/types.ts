@@ -2,6 +2,24 @@
 
 export type ParticipantStatus = 'aktif' | 'tidak_aktif' | 'baru';
 
+export interface Season {
+  id: string;
+  name: string;
+  startDate: Date;
+  endDate?: Date;
+  createdAt: Date;
+}
+
+export interface SeasonHistory {
+  id: string;
+  seasonId: string;
+  participantId: string;
+  finalPoints: number;
+  rank: number;
+  badge?: 'gold' | 'silver' | 'bronze' | null;
+  createdAt: Date;
+}
+
 export interface Participant {
   id: string;
   nama: string;
