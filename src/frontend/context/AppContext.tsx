@@ -334,24 +334,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         }
       }
 
+      const fetchAll = async (queryBuilder: any) => {
+        let allData: any[] = [];
+        let from = 0;
+        const step = 1000;
+        while (true) {
+          const { data, error } = await queryBuilder.range(from, from + step - 1);
+          if (error || !data || data.length === 0) break;
+          allData = allData.concat(data);
+          if (data.length < step) break;
+          from += step;
+        }
+        return { data: allData };
+      };
+
       const [
         { data: pData },
-        { data: tData },
         { data: attData },
         { data: adzData },
         { data: rpData },
         { data: rhData },
         { data: qData },
-        { data: qaData }
+        { data: qaData },
+        { data: tData }
       ] = await Promise.all([
-        supabase.from("participants").select("*").order("nama").limit(500),
-        trxQuery, // PENTING: semua transaksi harus terbaca untuk kalkulasi poin yang benar
-        attQuery,
-        adzQuery,
+        supabase.from("participants").select("*").order("nama").limit(1000),
+        fetchAll(attQuery),
+        fetchAll(adzQuery),
         supabase.from("redeem_packages").select("*").order("points_required").limit(100),
-        rhQuery,
+        fetchAll(rhQuery),
         supabase.from("quizzes").select("*").order("created_at", { ascending: false }).limit(200),
-        qaQuery
+        fetchAll(qaQuery),
+        fetchAll(trxQuery)
       ]);
 
       // Sinkronisasi jadwal Adzan dari Supabase
