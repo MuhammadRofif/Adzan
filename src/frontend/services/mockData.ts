@@ -33,11 +33,11 @@ export const mockTransactions: Transaction[] = [];
 
 // ─── Redeem Packages ─────────────────────────────────────────────────────────────
 export const mockRedeemPackages: RedeemPackage[] = [
-  { id: 'r1', name: 'Paket 5 Diamond', description: 'Dapatkan 5 Diamond untuk game favorit kamu!', pointsRequired: 150,  diamond: 5,   weeklyQuota: 999, remainingQuota: 999, budgetCost: 15000,   isAvailable: true },
-  { id: 'r2', name: 'Paket 12 Diamond', description: 'Hemat lebih banyak dengan 12 Diamond sekaligus!', pointsRequired: 300, diamond: 12,  weeklyQuota: 999, remainingQuota: 999, budgetCost: 30000,  isAvailable: true },
-  { id: 'r3', name: 'Paket 50 Diamond', description: 'Paket terpopuler! Cocok untuk pembelian item premium.', pointsRequired: 700, diamond: 50,  weeklyQuota: 999, remainingQuota: 999, budgetCost: 70000,  isAvailable: true },
-  { id: 'r4', name: 'Paket 70 Diamond', description: 'Nilai terbaik untuk para gamers serius.', pointsRequired: 900, diamond: 70,  weeklyQuota: 999, remainingQuota: 999, budgetCost: 90000,  isAvailable: true },
-  { id: 'r5', name: 'Paket 140 Diamond', description: 'Paket terbesar! Untuk pengalaman gaming terbaik.', pointsRequired: 1600, diamond: 140, weeklyQuota: 999, remainingQuota: 999, budgetCost: 160000, isAvailable: true },
+  { id: 'r1', name: 'Paket 5 Diamond', description: 'Dapatkan 5 Diamond untuk game favorit kamu!', pointsRequired: 50,  diamond: 5,   weeklyQuota: 2, remainingQuota: 2, budgetCost: 5000,   isAvailable: true },
+  { id: 'r2', name: 'Paket 12 Diamond', description: 'Hemat lebih banyak dengan 12 Diamond sekaligus!', pointsRequired: 110, diamond: 12,  weeklyQuota: 2, remainingQuota: 1, budgetCost: 12000,  isAvailable: true },
+  { id: 'r3', name: 'Paket 50 Diamond', description: 'Paket terpopuler! Cocok untuk pembelian item premium.', pointsRequired: 400, diamond: 50,  weeklyQuota: 1, remainingQuota: 1, budgetCost: 50000,  isAvailable: true },
+  { id: 'r4', name: 'Paket 70 Diamond', description: 'Nilai terbaik untuk para gamers serius.', pointsRequired: 550, diamond: 70,  weeklyQuota: 1, remainingQuota: 0, budgetCost: 70000,  isAvailable: false },
+  { id: 'r5', name: 'Paket 140 Diamond', description: 'Paket terbesar! Untuk pengalaman gaming terbaik.', pointsRequired: 950, diamond: 140, weeklyQuota: 1, remainingQuota: 1, budgetCost: 140000, isAvailable: true },
 ];
 
 // ─── Redeem History ──────────────────────────────────────────────────────────────

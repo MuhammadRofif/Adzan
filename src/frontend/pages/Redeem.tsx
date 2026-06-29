@@ -9,11 +9,11 @@ import { cn } from '../utils/cn';
 
 const getRealMoney = (diamonds: number) => {
   switch (diamonds) {
-    case 5: return 2000;
-    case 12: return 3000;
-    case 50: return 8000;
-    case 70: return 10000;
-    case 140: return 20000;
+    case 5: return 1000;
+    case 12: return 2000;
+    case 50: return 7000;
+    case 70: return 9000;
+    case 140: return 18000;
     default: return 0;
   }
 };
@@ -121,6 +121,10 @@ export const Redeem: React.FC = () => {
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Biaya Poin</span>
                   <span className="font-bold text-primary-600">{pkg.pointsRequired} pts</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Kuota/minggu</span>
+                  <span className="font-medium text-gray-900">{pkg.weeklyQuota}×</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Harga Budget</span>
