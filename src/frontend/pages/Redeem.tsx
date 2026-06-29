@@ -7,6 +7,17 @@ import { Badge, SectionHeader, Select, ProgressBar, ConfirmDialog } from '../com
 import { RedeemHistory } from '../../shared/types';
 import { cn } from '../utils/cn';
 
+const getRealMoney = (diamonds: number) => {
+  switch (diamonds) {
+    case 5: return 2000;
+    case 12: return 3000;
+    case 50: return 8000;
+    case 70: return 10000;
+    case 140: return 20000;
+    default: return 0;
+  }
+};
+
 export const Redeem: React.FC = () => {
   const { participants, points, redeemPackages, redeemHistory, requestRedeem, processRedeem, budgetStatus } = useApp();
 
@@ -56,7 +67,31 @@ export const Redeem: React.FC = () => {
         subtitle="Kelola paket hadiah dan permintaan penukaran poin"
       />
 
-
+      {/* Summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="card p-4 bg-indigo-50 border border-indigo-100">
+          <div className="text-indigo-500 text-sm font-semibold mb-1">Total Redeem Disetujui</div>
+          <div className="text-2xl font-bold text-indigo-900">{redeemHistory.filter(r => r.status === 'approved').length}x</div>
+        </div>
+        <div className="card p-4 bg-emerald-50 border border-emerald-100">
+          <div className="text-emerald-600 text-sm font-semibold mb-1">Total Setara Uang</div>
+          <div className="text-2xl font-bold text-emerald-900">
+            Rp {(redeemHistory.filter(r => r.status === 'approved').reduce((acc, r) => {
+              const pkg = redeemPackages.find(p => p.id === r.packageId);
+              return acc + (pkg ? getRealMoney(pkg.diamond) : 0);
+            }, 0) / 1000).toFixed(0)}k
+          </div>
+        </div>
+        <div className="card p-4 bg-amber-50 border border-amber-100">
+          <div className="text-amber-600 text-sm font-semibold mb-1">Total Harga Budget</div>
+          <div className="text-2xl font-bold text-amber-900">
+            Rp {(redeemHistory.filter(r => r.status === 'approved').reduce((acc, r) => {
+              const pkg = redeemPackages.find(p => p.id === r.packageId);
+              return acc + (pkg ? pkg.budgetCost : 0);
+            }, 0) / 1000).toFixed(0)}k
+          </div>
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6 w-fit">
@@ -88,12 +123,12 @@ export const Redeem: React.FC = () => {
                   <span className="font-bold text-primary-600">{pkg.pointsRequired} pts</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Kuota/minggu</span>
-                  <span className="font-medium text-gray-900">{pkg.weeklyQuota}×</span>
-                </div>
-                <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Harga Budget</span>
                   <span className="font-medium text-gray-700">Rp {(pkg.budgetCost / 1000).toFixed(0)}k</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Setara Uang</span>
+                  <span className="font-medium text-emerald-600">Rp {(getRealMoney(pkg.diamond) / 1000).toFixed(0)}k</span>
                 </div>
               </div>
               <Button onClick={() => { setRedeemModal(pkg.id); setRedeemError(''); }}

@@ -4,6 +4,17 @@ import { useApp } from '../../context/AppContext';
 import { cn } from '../../utils/cn';
 import { RedeemPackage } from '../../../shared/types';
 
+const getRealMoney = (diamonds: number) => {
+  switch (diamonds) {
+    case 5: return 2000;
+    case 12: return 3000;
+    case 50: return 8000;
+    case 70: return 10000;
+    case 140: return 20000;
+    default: return 0;
+  }
+};
+
 export const BocilRedeem: React.FC = () => {
   const { participants, points, redeemPackages, redeemHistory, requestRedeem } = useApp();
   const [selectedParticipant, setSelectedParticipant] = useState(() => localStorage.getItem('bocil_id') || '');
@@ -55,9 +66,15 @@ export const BocilRedeem: React.FC = () => {
   };
 
   // Recent redeems for display
-  const myRedeems = selectedParticipant
-    ? redeemHistory.filter(r => String(r.participantId) === String(selectedParticipant)).slice(0, 5)
+  const allMyRedeems = selectedParticipant
+    ? redeemHistory.filter(r => String(r.participantId) === String(selectedParticipant))
     : [];
+  const myRedeems = allMyRedeems.slice(0, 5);
+
+  const myTotalRealMoney = allMyRedeems.filter(r => r.status === 'approved').reduce((acc, r) => {
+    const pkg = redeemPackages.find(p => p.id === r.packageId);
+    return acc + (pkg ? getRealMoney(pkg.diamond) : 0);
+  }, 0);
 
   return (
     <div className="bocil-page">
@@ -126,8 +143,8 @@ export const BocilRedeem: React.FC = () => {
                   <span className="font-bold text-primary-600">{pkg.pointsRequired} poin</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Kuota/minggu</span>
-                  <span className="font-medium text-gray-700">{pkg.weeklyQuota}×</span>
+                  <span className="text-gray-500">Setara Uang</span>
+                  <span className="font-bold text-emerald-600">Rp {(getRealMoney(pkg.diamond) / 1000).toFixed(0)}k</span>
                 </div>
               </div>
 
@@ -159,7 +176,12 @@ export const BocilRedeem: React.FC = () => {
       {/* My Redeem History */}
       {selectedParticipant && myRedeems.length > 0 && (
         <div className="animate-fade-in">
-          <h2 className="text-xl font-bold text-gray-900 font-heading mb-4">📋 Riwayat Tukar Kamu</h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
+            <h2 className="text-xl font-bold text-gray-900 font-heading">📋 Riwayat Tukar Kamu</h2>
+            <div className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl font-bold text-sm border border-emerald-200 w-fit">
+              Total Uang Didapat: Rp {(myTotalRealMoney / 1000).toFixed(0)}k
+            </div>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {myRedeems.map((r, i) => {
               const statusEmoji = r.status === 'approved' ? '✅' : r.status === 'rejected' ? '❌' : '⏳';
