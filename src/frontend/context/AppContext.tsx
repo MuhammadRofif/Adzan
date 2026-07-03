@@ -128,6 +128,7 @@ type PointValue = {
   adzan: number;
   quiz: number;
   total: number;
+  grossTotal: number;
   adzanCount: number;
   attendanceCount: number;
   quizCount: number;
@@ -148,6 +149,7 @@ const emptyPointValue = (): PointValue => ({
   adzan: 0,
   quiz: 0,
   total: 0,
+  grossTotal: 0,
   adzanCount: 0,
   attendanceCount: 0,
   quizCount: 0,
@@ -288,7 +290,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
             createdAt: new Date(s.created_at)
           }));
           currentActiveSeason = mappedSeasons.find(s => !s.endDate) || mappedSeasons[0];
-          setActiveSeason(currentActiveSeason);
+setActiveSeason(currentActiveSeason);
           setAllSeasons(mappedSeasons);
 
           const { data: hData } = await supabase.from("season_history").select("*");
@@ -310,36 +312,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       }
 
       // 2. Prepare the base query for logs based on active season
-      let attQuery = supabase.from("attendance_log").select("*").order("date", { ascending: false }).limit(10000);
-      let adzQuery = supabase.from("adzan_log").select("*").order("date", { ascending: false }).limit(10000);
-      let qaQuery = supabase.from("quiz_attempts").select("*").order("completed_at", { ascending: false }).limit(10000);
-      let trxQuery = supabase.from("transactions").select("*").order("timestamp", { ascending: false }).limit(10000);
-      let rhQuery = supabase.from("redeem_history").select("*").order("requested_at", { ascending: false }).limit(10000);
-
-      if (currentActiveSeason) {
-        const startStr = currentActiveSeason.startDate.toISOString();
-        attQuery = attQuery.gte("date", startStr);
-        adzQuery = adzQuery.gte("date", startStr);
-        qaQuery = qaQuery.gte("completed_at", startStr);
-        trxQuery = trxQuery.gte("timestamp", startStr);
-        rhQuery = rhQuery.gte("requested_at", startStr);
-        
-        if (currentActiveSeason.endDate) {
-          const endStr = currentActiveSeason.endDate.toISOString();
-          attQuery = attQuery.lte("date", endStr);
-          adzQuery = adzQuery.lte("date", endStr);
-          qaQuery = qaQuery.lte("completed_at", endStr);
-          trxQuery = trxQuery.lte("timestamp", endStr);
-          rhQuery = rhQuery.lte("requested_at", endStr);
-        }
-      }
-
-      const fetchAll = async (queryBuilder: any) => {
+      const fetchAll = async (queryFactory: () => any) => {
         let allData: any[] = [];
         let from = 0;
         const step = 1000;
         while (true) {
-          const { data, error } = await queryBuilder.range(from, from + step - 1);
+          const { data, error } = await queryFactory().range(from, from + step - 1);
           if (error || !data || data.length === 0) break;
           allData = allData.concat(data);
           if (data.length < step) break;
@@ -359,13 +337,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         { data: tData }
       ] = await Promise.all([
         supabase.from("participants").select("*").order("nama").limit(1000),
-        fetchAll(attQuery),
-        fetchAll(adzQuery),
+        fetchAll(() => supabase.from("attendance_log").select("*").order("date", { ascending: false })),
+        fetchAll(() => supabase.from("adzan_log").select("*").order("date", { ascending: false })),
         supabase.from("redeem_packages").select("*").order("points_required").limit(100),
-        fetchAll(rhQuery),
+        fetchAll(() => supabase.from("redeem_history").select("*").order("requested_at", { ascending: false })),
         supabase.from("quizzes").select("*").order("created_at", { ascending: false }).limit(200),
-        fetchAll(qaQuery),
-        fetchAll(trxQuery)
+        fetchAll(() => supabase.from("quiz_attempts").select("*").order("completed_at", { ascending: false })),
+        fetchAll(() => supabase.from("transactions").select("*").order("timestamp", { ascending: false }))
       ]);
 
       // Sinkronisasi jadwal Adzan dari Supabase
@@ -484,21 +462,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       const pointMap: Record<string, PointValue> = {};
       mappedParticipants.forEach((p: any) => { pointMap[p.id] = emptyPointValue(); });
 
-      // 1. Hitung dari adzan_log (Adzan +10, Sholawat+Iqomah +8)
+      // Helper: apakah tanggal masuk dalam season AKTIF (untuk hitung saldo/total saat ini)
+      const isInActiveSeason = (dateStr: string | Date | undefined) => {
+        if (!currentActiveSeason) return true;
+        if (!dateStr) return false;
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return false;
+        if (d < currentActiveSeason.startDate) return false;
+        if (currentActiveSeason.endDate && d > currentActiveSeason.endDate) return false;
+        return true;
+      };
+
+      // ── PASS 1: Hitung TOTAL SALDO (hanya season aktif) ──────────────────────
+
+      // Adzan
       mappedAdzan.forEach((a: any) => {
+        if (!isInActiveSeason(a.date)) return;
         const key = String(a.participantId);
         if (!pointMap[key]) pointMap[key] = emptyPointValue();
         pointMap[key].adzan += a.total;
         pointMap[key].total += a.total;
-        if (a.adzanPoints === 8) {
-          pointMap[key].sholawatIqomahCount++;
-        } else {
-          pointMap[key].adzanCount++;
-        }
+        if (a.adzanPoints === 8) pointMap[key].sholawatIqomahCount++;
+        else pointMap[key].adzanCount++;
       });
 
-      // 2. Hitung dari attendance_log (Latihan, poin sesuai sikap)
+      // Attendance
       mappedAttendance.forEach((a: any) => {
+        if (!isInActiveSeason(a.date)) return;
         const key = String(a.participantId);
         if (!pointMap[key]) pointMap[key] = emptyPointValue();
         pointMap[key].attendance += a.points;
@@ -506,8 +496,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         pointMap[key].attendanceCount++;
       });
 
-      // 3. Hitung dari quiz_attempts
+      // Quiz attempts (count)
       mappedQuizAttempts.forEach((qa: any) => {
+        if (!isInActiveSeason(qa.completedAt)) return;
         const key = String(qa.participantId);
         if (!pointMap[key]) pointMap[key] = emptyPointValue();
         pointMap[key].quiz += qa.earnedPoints || 0;
@@ -515,21 +506,50 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         pointMap[key].quizCount++;
       });
 
-      // 4. Tambahkan bonus naik pangkat (type='adjustment') dari transactions
+      // Transactions (adjustment tambah ke saldo, redeem kurangi saldo)
       mappedTransactions.forEach((t: any) => {
+        if (!isInActiveSeason(t.timestamp)) return;
+        const key = String(t.participantId);
+        if (!pointMap[key]) pointMap[key] = emptyPointValue();
         if (t.type === 'adjustment') {
-          const key = String(t.participantId);
-          if (!pointMap[key]) pointMap[key] = emptyPointValue();
           pointMap[key].total += t.points;
         }
       });
 
-      // 5. Kurangi poin dari redeem yang DISETUJUI (approved)
+      // Redeem kurangi saldo
       mappedRedeemHistory.forEach((r: any) => {
+        if (!isInActiveSeason(r.requestedAt)) return;
         if (r.status === 'approved') {
           const key = String(r.participantId);
           if (!pointMap[key]) pointMap[key] = emptyPointValue();
           pointMap[key].total -= r.pointsSpent;
+        }
+      });
+
+      // ── PASS 2: Hitung GROSS TOTAL (SEMUA WAKTU, tidak difilter season) ──────
+      // grossTotal = poin kotor sepanjang masa: adzan + hadir + quiz + bonus
+      // Dihitung dari raw logs agar akurat dan tidak bergantung pada transactions
+      mappedAdzan.forEach((a: any) => {
+        const key = String(a.participantId);
+        if (!pointMap[key]) pointMap[key] = emptyPointValue();
+        pointMap[key].grossTotal += a.total;
+      });
+
+      mappedAttendance.forEach((a: any) => {
+        const key = String(a.participantId);
+        if (!pointMap[key]) pointMap[key] = emptyPointValue();
+        pointMap[key].grossTotal += a.points;
+      });
+
+      // Quiz: gunakan transactions type='quiz' karena lebih lengkap dari quiz_attempts
+      mappedTransactions.forEach((t: any) => {
+        const key = String(t.participantId);
+        if (!pointMap[key]) pointMap[key] = emptyPointValue();
+        if (t.type === 'quiz' && t.points > 0) {
+          pointMap[key].grossTotal += t.points;
+        }
+        if (t.type === 'adjustment' && t.points > 0) {
+          pointMap[key].grossTotal += t.points;
         }
       });
 

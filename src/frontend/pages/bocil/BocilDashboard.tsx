@@ -103,7 +103,7 @@ export const BocilDashboard: React.FC = () => {
     else localStorage.removeItem("bocil_id");
   }, [selectedUser]);
 
-  // Leaderboard logic
+  // Leaderboard logic - urutkan berdasarkan grossTotal (poin kotor, tanpa dikurangi redeem)
   const leaderboard = useMemo(() => {
     return [...participants]
       .filter((p) => p.status === "aktif")

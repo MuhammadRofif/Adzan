@@ -23,18 +23,39 @@ export const Dashboard: React.FC = () => {
   const [adzParticipant, setAdzParticipant] = useState('');
   const [adzAttitude, setAdzAttitude] = useState('Bagus');
   const [showAllPerformers, setShowAllPerformers] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<string>('semua');
+
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    [...adzanLog, ...attendanceLog].forEach(log => {
+      if (log.date) {
+        months.add(log.date.substring(0, 7)); // YYYY-MM
+      }
+    });
+    return Array.from(months).sort(); // Ascending (May, June, July)
+  }, [adzanLog, attendanceLog]);
+
+  const formatMonth = (yyyyMM: string) => {
+    const [y, m] = yyyyMM.split('-');
+    const date = new Date(parseInt(y), parseInt(m) - 1);
+    return date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
+  };
 
   // --- NEW AGGREGATED STATS LOGIC ---
   const [chartFilter, setChartFilter] = useState<'semua'|'adzan'|'sholawat'|'attendance'|'quiz'>('semua');
 
-  // Gunakan data real dari context (sesuai season yang aktif)
+  // Gunakan data real dari context
   const allLogs = useMemo(() => {
-    return [
+    let logs = [
       ...adzanLog.map(d => ({ date: d.date, type: d.adzanPoints === 8 ? 'sholawat' as const : 'adzan' as const })),
       ...attendanceLog.map(d => ({ date: d.date, type: 'attendance' as const })),
       ...quizAttempts.map(d => ({ date: new Date(d.completedAt).toISOString(), type: 'quiz' as const }))
     ];
-  }, [adzanLog, attendanceLog, quizAttempts]);
+    if (selectedMonth !== 'semua') {
+      logs = logs.filter(log => log.date && log.date.startsWith(selectedMonth));
+    }
+    return logs;
+  }, [adzanLog, attendanceLog, quizAttempts, selectedMonth]);
 
   const filteredLogs = useMemo(() => {
     if (chartFilter === 'semua') return allLogs;
@@ -42,7 +63,19 @@ export const Dashboard: React.FC = () => {
   }, [allLogs, chartFilter]);
 
   const { counts, last30DaysData, monthlyData } = useMemo(() => {
-    const now = new Date();
+    let refDate = new Date();
+    if (selectedMonth !== 'semua') {
+      const [y, m] = selectedMonth.split('-');
+      // Akhir dari bulan yang dipilih
+      refDate = new Date(parseInt(y), parseInt(m), 0);
+      
+      const now = new Date();
+      // Jika bulan yang dipilih adalah bulan ini, gunakan tanggal hari ini
+      if (refDate.getMonth() === now.getMonth() && refDate.getFullYear() === now.getFullYear()) {
+        refDate = now;
+      }
+    }
+
     const isSameDay = (d1: Date, d2: Date) => d1.toDateString() === d2.toDateString();
     const getStartOfWeek = (d: Date) => {
       const date = new Date(d);
@@ -51,14 +84,14 @@ export const Dashboard: React.FC = () => {
       return new Date(date.setHours(0,0,0,0) + diff * 86400000);
     };
 
-    const today = now;
-    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
-    const thisWeekStart = getStartOfWeek(now);
+    const today = refDate;
+    const yesterday = new Date(refDate); yesterday.setDate(yesterday.getDate() - 1);
+    const thisWeekStart = getStartOfWeek(refDate);
     const lastWeekStart = new Date(thisWeekStart); lastWeekStart.setDate(lastWeekStart.getDate() - 7);
     const lastWeekEnd = new Date(thisWeekStart); lastWeekEnd.setDate(lastWeekEnd.getDate() - 1);
     
-    const thisMonth = now.getMonth();
-    const thisYear = now.getFullYear();
+    const thisMonth = refDate.getMonth();
+    const thisYear = refDate.getFullYear();
     const lastMonth = thisMonth === 0 ? 11 : thisMonth - 1;
     const lastMonthYear = thisMonth === 0 ? thisYear - 1 : thisYear;
     const lastYear = thisYear - 1;
@@ -72,10 +105,27 @@ export const Dashboard: React.FC = () => {
     };
 
     const d30: { name: string, fullDate: Date, jumlah: number }[] = [];
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      d30.push({ name: d.toLocaleDateString('id-ID', { month: 'short', day: 'numeric' }), fullDate: d, jumlah: 0 });
+    let chartStartDate = new Date(refDate);
+    chartStartDate.setDate(chartStartDate.getDate() - 29); // Default 30 days
+
+    if (selectedMonth === 'semua' || selectedMonth.startsWith('2026-07')) {
+      const julyFirst = new Date(2026, 6, 1); // 1 Juli 2026
+      if (julyFirst < refDate) {
+        chartStartDate = julyFirst;
+      }
+    } else {
+      const [y, m] = selectedMonth.split('-');
+      chartStartDate = new Date(parseInt(y), parseInt(m) - 1, 1);
+    }
+
+    const currentDay = new Date(chartStartDate);
+    while (currentDay <= refDate) {
+      d30.push({
+        name: currentDay.toLocaleDateString('id-ID', { month: 'short', day: 'numeric' }),
+        fullDate: new Date(currentDay),
+        jumlah: 0
+      });
+      currentDay.setDate(currentDay.getDate() + 1);
     }
 
     const mDataMap = new Map<string, number>();
@@ -86,19 +136,19 @@ export const Dashboard: React.FC = () => {
       if (isSameDay(d, today)) cnts.today++;
       if (isSameDay(d, yesterday)) cnts.yesterday++;
       
-      if (d >= thisWeekStart) cnts.thisWeek++;
+      if (d >= thisWeekStart && d <= today) cnts.thisWeek++;
       if (d >= lastWeekStart && d <= lastWeekEnd) cnts.lastWeek++;
       
-      if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) cnts.thisMonth++;
+      if (d.getMonth() === thisMonth && d.getFullYear() === thisYear && d <= today) cnts.thisMonth++;
       if (d.getMonth() === lastMonth && d.getFullYear() === lastMonthYear) cnts.lastMonth++;
       
-      if (d.getFullYear() === thisYear) cnts.thisYear++;
+      if (d.getFullYear() === thisYear && d <= today) cnts.thisYear++;
       if (d.getFullYear() === lastYear) cnts.lastYear++;
 
-      // 30 Days chart
-      const diffTime = Math.abs(now.getTime() - d.getTime());
+      // 30 Days chart relative to refDate
+      const diffTime = refDate.getTime() - d.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      if (diffDays <= 30) {
+      if (diffDays >= 0 && diffDays <= 30) {
         const target = d30.find(item => isSameDay(item.fullDate, d));
         if (target) target.jumlah++;
       }
@@ -116,8 +166,10 @@ export const Dashboard: React.FC = () => {
       .sort((a, b) => a.timestamp - b.timestamp)
       .slice(-12);
 
+    // If a specific month is selected, the "monthlyData" chart will only have 1 bar natively.
+    // That's correct since we only have data for that month in filteredLogs.
     return { counts: cnts, last30DaysData: d30, monthlyData: mData };
-  }, [filteredLogs]);
+  }, [filteredLogs, selectedMonth]);
 
   const getFilterCount = (id: string) => {
     const p = points[id];
@@ -133,10 +185,20 @@ export const Dashboard: React.FC = () => {
 
   const allPerformers = [...participants]
     .filter(p => p.status === 'aktif')
-    .sort((a, b) => getFilterCount(b.id) - getFilterCount(a.id));
+    .sort((a, b) => {
+      if (chartFilter === 'semua') {
+        return (points[b.id]?.grossTotal ?? 0) - (points[a.id]?.grossTotal ?? 0);
+      }
+      return getFilterCount(b.id) - getFilterCount(a.id);
+    });
   const topFive = allPerformers.slice(0, 5);
-  const recentActivity = [...adzanLog.slice(0, 3), ...attendanceLog.slice(0, 2)]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+  const recentActivity = useMemo(() => {
+    let combined = [...adzanLog, ...attendanceLog];
+    if (selectedMonth !== 'semua') {
+      combined = combined.filter(log => log.date && log.date.startsWith(selectedMonth));
+    }
+    return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+  }, [adzanLog, attendanceLog, selectedMonth]);
 
   const statCards = [
     { title: 'Hari Ini', current: counts.today, prev: counts.yesterday, prevLabel: 'Kemarin' },
@@ -145,25 +207,45 @@ export const Dashboard: React.FC = () => {
     { title: 'Tahun Ini', current: counts.thisYear, prev: counts.lastYear, prevLabel: 'Tahun Lalu' },
   ];
 
+  // Cek apakah bulan yang dipilih adalah bulan saat ini
+  const isCurrentMonth = useMemo(() => {
+    if (selectedMonth === 'semua') return true;
+    const now = new Date();
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return selectedMonth === currentYM;
+  }, [selectedMonth]);
+
+  // Rekap per jenis aktivitas untuk bulan yang dipilih
+  const monthlyRecap = useMemo(() => {
+    let adzanCount = 0, sholawatCount = 0, attendanceCount = 0, quizCount = 0;
+    allLogs.forEach(log => {
+      if (log.type === 'adzan') adzanCount++;
+      else if (log.type === 'sholawat') sholawatCount++;
+      else if (log.type === 'attendance') attendanceCount++;
+      else if (log.type === 'quiz') quizCount++;
+    });
+    return { adzanCount, sholawatCount, attendanceCount, quizCount };
+  }, [allLogs]);
+
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
       {/* Header */}
       <div className="section-header">
         <div>
-          <h1 className="page-title">Dashboard Overview</h1>
-          <p className="page-subtitle">Pantau statistik adzan dan kehadiran peserta</p>
+          <h1 className="page-title">Dashboard Season 1</h1>
+          <p className="page-subtitle">Pantau statistik adzan dan kehadiran peserta untuk Season 1</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button 
-            variant="outline" 
-            onClick={() => {
-              if (window.confirm("Yakin ingin mengakhiri season ini?")) {
-                const nextName = window.prompt("Masukkan nama untuk Season baru:", "Season 2");
-                if (nextName) endSeason(nextName);
-              }
-            }}
-            className="border-red-200 text-red-600 hover:bg-red-50"
-          >Akhiri Season</Button>
+          <select 
+            className="input text-sm py-2 px-3 pr-8 min-w-[140px] font-medium"
+            value={selectedMonth}
+            onChange={e => setSelectedMonth(e.target.value)}
+          >
+            <option value="semua">Semua Waktu</option>
+            {availableMonths.map(m => (
+              <option key={m} value={m}>{formatMonth(m)}</option>
+            ))}
+          </select>
         </div>
       </div>
       <div className="space-y-6">
@@ -182,10 +264,10 @@ export const Dashboard: React.FC = () => {
             ))}
           </div>
 
-          {/* Comparative Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {statCards.map(s => {
-              return (
+          {/* Stat Cards - Rekap bulan lalu vs hari ini/pekan/bulan */}
+          {isCurrentMonth ? (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {statCards.map(s => (
                 <div key={s.title} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
                   <p className="text-sm font-medium text-gray-500 mb-1">{s.title}</p>
                   <p className="text-3xl font-black text-gray-900 mb-2">{s.current}</p>
@@ -195,18 +277,42 @@ export const Dashboard: React.FC = () => {
                     </span>
                   </div>
                 </div>
-              );
-            })}
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 shadow-sm text-white md:col-span-1 col-span-2 flex flex-col justify-between">
-              <div>
-                <p className="text-sm font-medium text-white/80 mb-1">Semua Waktu</p>
-                <p className="text-3xl font-black mb-2">{counts.allTime}</p>
-              </div>
-              <div className="flex items-center gap-1 text-xs text-white/70">
-                <Target className="w-4 h-4" /> Total Aktivitas
+              ))}
+              <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 shadow-sm text-white md:col-span-1 col-span-2 flex flex-col justify-between">
+                <div>
+                  <p className="text-sm font-medium text-white/80 mb-1">Semua Waktu</p>
+                  <p className="text-3xl font-black mb-2">{counts.allTime}</p>
+                </div>
+                <div className="flex items-center gap-1 text-xs text-white/70">
+                  <Target className="w-4 h-4" /> Total Aktivitas
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {[
+                { title: 'Adzan', count: monthlyRecap.adzanCount, icon: '📢', color: 'from-blue-500 to-blue-600' },
+                { title: 'Sholawat+Iqomah', count: monthlyRecap.sholawatCount, icon: '📿', color: 'from-purple-500 to-purple-600' },
+                { title: 'Latihan Hadir', count: monthlyRecap.attendanceCount, icon: '✅', color: 'from-emerald-500 to-emerald-600' },
+                { title: 'Quiz', count: monthlyRecap.quizCount, icon: '🧠', color: 'from-amber-500 to-amber-600' },
+              ].map(s => (
+                <div key={s.title} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+                  <p className="text-2xl mb-1">{s.icon}</p>
+                  <p className="text-sm font-medium text-gray-500 mb-1">{s.title}</p>
+                  <p className="text-3xl font-black text-gray-900">{s.count}×</p>
+                </div>
+              ))}
+              <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 shadow-sm text-white md:col-span-1 col-span-2 flex flex-col justify-between">
+                <div>
+                  <p className="text-sm font-medium text-white/80 mb-1">Total Aktivitas</p>
+                  <p className="text-3xl font-black mb-2">{counts.allTime}</p>
+                </div>
+                <div className="flex items-center gap-1 text-xs text-white/70">
+                  <Target className="w-4 h-4" /> {formatMonth(selectedMonth)}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Charts Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -305,7 +411,7 @@ export const Dashboard: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-gray-600">{getFilterCount(p.id)}×</td>
-                    <td className="px-6 py-4 font-bold text-primary-600">{points[p.id]?.total ?? 0} pts</td>
+                    <td className="px-6 py-4 font-bold text-primary-600">{points[p.id]?.grossTotal ?? 0} pts</td>
                   </tr>
                 ))}
               </tbody>
@@ -324,7 +430,7 @@ export const Dashboard: React.FC = () => {
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-gray-900 font-heading">Aktivitas Terbaru</h3>
-                <p className="text-sm text-gray-500">Bulan ini</p>
+                <p className="text-sm text-gray-500">{selectedMonth === 'semua' ? 'Season 1' : formatMonth(selectedMonth)}</p>
               </div>
               <Clock className="w-4 h-4 text-gray-400" />
             </div>
@@ -422,7 +528,7 @@ export const Dashboard: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-gray-600">{getFilterCount(p.id)}×</td>
-                  <td className="px-6 py-4 font-bold text-primary-600">{points[p.id]?.total ?? 0} pts</td>
+                  <td className="px-6 py-4 font-bold text-primary-600">{points[p.id]?.grossTotal ?? 0} pts</td>
                 </tr>
               ))}
             </tbody>

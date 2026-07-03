@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Mic, CheckCircle2, PlusCircle, Search, Filter } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Mic, CheckCircle2, PlusCircle, Search, Filter, Calendar } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -18,6 +18,7 @@ export const Tracking: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'adzan' | 'attendance'>('adzan');
   const [search, setSearch] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState<string>('semua');
   const [attendanceModal, setAttendanceModal] = useState(false);
   const [adzanModal, setAdzanModal] = useState(false);
   const [attParticipant, setAttParticipant] = useState('');
@@ -28,8 +29,33 @@ export const Tracking: React.FC = () => {
   const [adzRole, setAdzRole] = useState<'adzan' | 'sholawat_iqomah'>('adzan');
   const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const filteredAdzan = adzanLog.filter(a => a.participantName.toLowerCase().includes(search.toLowerCase()));
-  const filteredAttendance = attendanceLog.filter(a => a.participantName.toLowerCase().includes(search.toLowerCase()));
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    [...adzanLog, ...attendanceLog].forEach(log => {
+      if (log.date) {
+        months.add(log.date.substring(0, 7)); // YYYY-MM
+      }
+    });
+    return Array.from(months).sort().reverse();
+  }, [adzanLog, attendanceLog]);
+
+  const formatMonth = (yyyyMM: string) => {
+    const [y, m] = yyyyMM.split('-');
+    const date = new Date(parseInt(y), parseInt(m) - 1);
+    return date.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+  };
+
+  const filteredAdzan = adzanLog.filter(a => {
+    const matchSearch = a.participantName.toLowerCase().includes(search.toLowerCase());
+    const matchMonth = selectedMonth === 'semua' || (a.date && a.date.startsWith(selectedMonth));
+    return matchSearch && matchMonth;
+  });
+  
+  const filteredAttendance = attendanceLog.filter(a => {
+    const matchSearch = a.participantName.toLowerCase().includes(search.toLowerCase());
+    const matchMonth = selectedMonth === 'semua' || (a.date && a.date.startsWith(selectedMonth));
+    return matchSearch && matchMonth;
+  });
 
   const attitudeStyle = (attitude: string) => ATTITUDES.find(a => a.label === attitude);
 
@@ -57,10 +83,25 @@ export const Tracking: React.FC = () => {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="relative mb-6 max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input className="input pl-10" placeholder="Cari nama peserta..." value={search} onChange={e => setSearch(e.target.value)} />
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4 mb-6">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input className="input pl-10 w-full" placeholder="Cari nama peserta..." value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+        <div className="relative max-w-xs">
+          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <select 
+            className="input pl-10 appearance-none w-full" 
+            value={selectedMonth} 
+            onChange={e => setSelectedMonth(e.target.value)}
+          >
+            <option value="semua">Semua Bulan</option>
+            {availableMonths.map(m => (
+              <option key={m} value={m}>{formatMonth(m)}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Adzan Log */}
