@@ -7,6 +7,7 @@ import { Select } from '../components/ui/index';
 import { cn } from '../utils/cn';
 import { supabase } from '../services/supabase';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { getPangkat } from '../../shared/types';
 
 const ATTITUDES = [
   { label: 'Bagus', points: 5, color: 'border-emerald-400 bg-emerald-50 text-emerald-700' },
@@ -15,7 +16,23 @@ const ATTITUDES = [
 ];
 
 export const Dashboard: React.FC = () => {
-  const { participants, points, adzanLog, attendanceLog, recordAttendance, recordAdzan, endSeason, quizAttempts } = useApp();
+  const { participants, points, adzanLog, attendanceLog, recordAttendance, recordAdzan, endSeason, quizAttempts, seasonHistory, allSeasons } = useApp();
+
+  const getPastSeasonBadges = (participantId: string | number) => {
+    const pastWins = seasonHistory.filter(h => String(h.participantId) === String(participantId));
+    if (pastWins.length === 0) return [];
+    return pastWins.map(w => {
+      const season = allSeasons.find(s => s.id === w.seasonId);
+      const match = season?.name?.match(/\d+/);
+      const seasonNum = match ? `Season ${match[0]}` : 'Season 1';
+      const pLevel = getPangkat(w.finalPoints);
+      const title = pLevel.current.title;
+      if (w.badge === 'gold') return { emoji: '🏆', label: `Juara 1 (${seasonNum}) - ${title}` };
+      if (w.badge === 'silver') return { emoji: '🥈', label: `Juara 2 (${seasonNum}) - ${title}` };
+      if (w.badge === 'bronze') return { emoji: '🥉', label: `Juara 3 (${seasonNum}) - ${title}` };
+      return null;
+    }).filter(Boolean) as { emoji: string; label: string }[];
+  };
 
   const [attendanceModal, setAttendanceModal] = useState(false);
   const [adzanModal, setAdzanModal] = useState(false);
@@ -407,7 +424,14 @@ export const Dashboard: React.FC = () => {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs">{p.nama.charAt(0)}</div>
-                        <span className="font-medium text-gray-900">{p.nama}</span>
+                        <span className="font-medium text-gray-900 flex items-center gap-1.5">
+                          {p.nama}
+                          {getPastSeasonBadges(p.id).map((b, idx) => (
+                           <span key={idx} title={b.label} className="inline-flex items-center text-[10px] bg-amber-50 border border-amber-200 text-amber-700 px-1.5 py-0.5 rounded-md font-bold shadow-sm select-none">
+                             {b.emoji} {b.label}
+                           </span>
+                         ))}
+                        </span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-gray-600">{getFilterCount(p.id)}×</td>

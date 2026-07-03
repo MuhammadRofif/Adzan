@@ -60,8 +60,24 @@ const Medal: React.FC<{ rank: number }> = ({ rank }) => {
 };
 
 export const BocilDashboard: React.FC = () => {
-  const { participants, points, adzanLog, attendanceLog, quizAttempts, quizzes, redeemHistory, schedule, transactions } =
+  const { participants, points, adzanLog, attendanceLog, quizAttempts, quizzes, redeemHistory, schedule, transactions, seasonHistory, allSeasons } =
     useApp();
+
+  const getPastSeasonBadges = (participantId: string | number) => {
+    const pastWins = seasonHistory.filter(h => String(h.participantId) === String(participantId));
+    if (pastWins.length === 0) return [];
+    return pastWins.map(w => {
+      const season = allSeasons.find(s => s.id === w.seasonId);
+      const match = season?.name?.match(/\d+/);
+      const seasonNum = match ? `Season ${match[0]}` : 'Season 1';
+      const pLevel = getPangkat(w.finalPoints);
+      const title = pLevel.current.title;
+      if (w.badge === 'gold') return { emoji: '🏆', label: `Juara 1 (${seasonNum}) - ${title}` };
+      if (w.badge === 'silver') return { emoji: '🥈', label: `Juara 2 (${seasonNum}) - ${title}` };
+      if (w.badge === 'bronze') return { emoji: '🥉', label: `Juara 3 (${seasonNum}) - ${title}` };
+      return null;
+    }).filter(Boolean) as { emoji: string; label: string }[];
+  };
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const prevPointsRef = useRef<{ [key: string]: number }>({});
   const [selectedUser, setSelectedUser] = useState<string | null>(() =>
@@ -1033,6 +1049,13 @@ export const BocilDashboard: React.FC = () => {
                     >
                       {leaderboard[1].nama.split(" ")[0]}
                     </p>
+                    <div className="flex justify-center gap-1 my-0.5">
+                      {getPastSeasonBadges(leaderboard[1].id).map((b, idx) => (
+                        <span key={idx} className="text-[8px] sm:text-[9px] bg-amber-50 border border-amber-200 text-amber-700 px-1 py-0.2 rounded font-black shadow-sm select-none">
+                          {b.emoji} {b.label}
+                        </span>
+                      ))}
+                    </div>
                     <div className="text-[10px] text-gray-500 font-medium">
                       {
                         getPangkat(points[leaderboard[1].id]?.total ?? 0)
@@ -1108,6 +1131,13 @@ export const BocilDashboard: React.FC = () => {
                   >
                     {leaderboard[0].nama.split(" ")[0]}
                   </p>
+                  <div className="flex justify-center gap-1 my-0.5">
+                    {getPastSeasonBadges(leaderboard[0].id).map((b, idx) => (
+                      <span key={idx} className="text-[8px] sm:text-[9px] bg-amber-50 border border-amber-200 text-amber-700 px-1 py-0.2 rounded font-black shadow-sm select-none">
+                        {b.emoji} {b.label}
+                      </span>
+                    ))}
+                  </div>
                   <div className="text-[10px] text-amber-600 font-bold">
                     {
                       getPangkat(points[leaderboard[0].id]?.total ?? 0).current
@@ -1176,6 +1206,13 @@ export const BocilDashboard: React.FC = () => {
                     >
                       {leaderboard[2].nama.split(" ")[0]}
                     </p>
+                    <div className="flex justify-center gap-1 my-0.5">
+                      {getPastSeasonBadges(leaderboard[2].id).map((b, idx) => (
+                        <span key={idx} className="text-[8px] sm:text-[9px] bg-amber-50 border border-amber-200 text-amber-700 px-1 py-0.2 rounded font-black shadow-sm select-none">
+                          {b.emoji} {b.label}
+                        </span>
+                      ))}
+                    </div>
                     <div className="text-[10px] text-orange-600 font-medium">
                       {
                         getPangkat(points[leaderboard[2].id]?.total ?? 0)
@@ -1270,6 +1307,11 @@ export const BocilDashboard: React.FC = () => {
                             )}
                           >
                             {p.nama}{" "}
+                            {getPastSeasonBadges(p.id).map((b, idx) => (
+                              <span key={idx} className="inline-flex items-center text-[10px] ml-1 bg-amber-50 border border-amber-200 text-amber-700 px-1.5 py-0.5 rounded font-black shadow-sm select-none">
+                                {b.emoji} {b.label}
+                              </span>
+                            ))}
                             {selectedUser === p.id && (
                               <span className="ml-1 text-[9px] bg-pink-500 text-white px-2 py-0.5 rounded-full font-black italic shadow-sm animate-bounce inline-block">
                                 🌟 AKU DISINI!
