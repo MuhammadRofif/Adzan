@@ -1297,27 +1297,29 @@ export const BocilDashboard: React.FC = () => {
                             p.nama.charAt(0)
                           )}
                         </div>
-                        <div className="min-w-0">
-                          <p
-                            className={cn(
-                              "font-bold text-sm transition-colors truncate",
-                              selectedUser === p.id
-                                ? "text-pink-600"
-                                : "text-gray-800 group-hover:text-primary-600",
-                            )}
-                          >
-                            {p.nama}{" "}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center flex-wrap gap-1.5">
+                            <span
+                              className={cn(
+                                "font-bold text-sm transition-colors truncate max-w-[100px] sm:max-w-none",
+                                selectedUser === p.id
+                                  ? "text-pink-600"
+                                  : "text-gray-800 group-hover:text-primary-600",
+                              )}
+                            >
+                              {p.nama}
+                            </span>
                             {getPastSeasonBadges(p.id).map((b, idx) => (
-                              <span key={idx} className="inline-flex items-center text-[10px] ml-1 bg-amber-50 border border-amber-200 text-amber-700 px-1.5 py-0.5 rounded font-black shadow-sm select-none">
+                              <span key={idx} className="inline-flex items-center text-[10px] bg-amber-50 border border-amber-200 text-amber-700 px-1.5 py-0.5 rounded font-black shadow-sm select-none whitespace-nowrap">
                                 {b.emoji} {b.label}
                               </span>
                             ))}
                             {selectedUser === p.id && (
-                              <span className="ml-1 text-[9px] bg-pink-500 text-white px-2 py-0.5 rounded-full font-black italic shadow-sm animate-bounce inline-block">
+                              <span className="text-[9px] bg-pink-500 text-white px-2 py-0.5 rounded-full font-black italic shadow-sm animate-bounce inline-block whitespace-nowrap">
                                 🌟 AKU DISINI!
                               </span>
                             )}
-                          </p>
+                          </div>
                           <p className="text-[10px] font-bold text-gray-400 flex items-center gap-1">
                             {current.emoji} {current.title}
                           </p>
