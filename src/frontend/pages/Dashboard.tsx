@@ -24,12 +24,12 @@ export const Dashboard: React.FC = () => {
     return pastWins.map(w => {
       const season = allSeasons.find(s => s.id === w.seasonId);
       const match = season?.name?.match(/\d+/);
-      const seasonNum = match ? `Season ${match[0]}` : 'Season 1';
+      const seasonNum = match ? `S${match[0]}` : 'S1';
       const pLevel = getPangkat(w.finalPoints);
       const title = pLevel.current.title;
-      if (w.badge === 'gold') return { emoji: '🏆', label: `Juara 1 (${seasonNum}) - ${title}` };
-      if (w.badge === 'silver') return { emoji: '🥈', label: `Juara 2 (${seasonNum}) - ${title}` };
-      if (w.badge === 'bronze') return { emoji: '🥉', label: `Juara 3 (${seasonNum}) - ${title}` };
+      if (w.badge === 'gold') return { emoji: '🏆', label: `${title} (${seasonNum})` };
+      if (w.badge === 'silver') return { emoji: '🥈', label: `${title} (${seasonNum})` };
+      if (w.badge === 'bronze') return { emoji: '🥉', label: `${title} (${seasonNum})` };
       return null;
     }).filter(Boolean) as { emoji: string; label: string }[];
   };
