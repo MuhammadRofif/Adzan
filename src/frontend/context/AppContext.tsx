@@ -27,7 +27,7 @@ import {
 import { supabase } from "../services/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────────
-type ActivityKind = "adzan" | "sholawat_iqomah" | "attendance";
+export type ActivityKind = "adzan" | "sholawat_iqomah" | "attendance";
 
 interface AppContextType {
   // Participants
@@ -67,6 +67,13 @@ interface AppContextType {
     attitude: string,
     customDate?: string
   ) => void;
+  /** Absen massal: semua anak dicatat, lalu data disegarkan sekali saja. */
+  recordActivities: (
+    kind: ActivityKind,
+    participantIds: string[],
+    attitude: string,
+    customDate?: string
+  ) => Promise<{ ok: number; failed: number }>;
 
   // Redeem
   redeemPackages: RedeemPackage[];
@@ -775,6 +782,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     [recordActivity],
   );
 
+  const recordActivities = useCallback(
+    async (kind: ActivityKind, participantIds: string[], attitude: string, customDate?: string) => {
+      const date = customDate || localToday();
+      const results = await Promise.all(participantIds.map((id) =>
+        supabase.rpc("record_activity", {
+          p_participant_id: Number(id),
+          p_kind: kind,
+          p_prayer_time: "",
+          p_attitude: attitude,
+          p_date: date,
+          p_idempotency_key: newIdempotencyKey(),
+        }),
+      ));
+      const failed = results.filter((r) => r.error);
+      if (failed.length) rpcError(failed[0].error, `${failed.length} anak gagal dicatat`);
+      const ok = results.length - failed.length;
+      if (ok > 0) {
+        const label = kind === "adzan" ? "Adzan" : kind === "sholawat_iqomah" ? "Sholawat + Iqomah" : "Latihan";
+        showToast(`${label} ${ok} anak berhasil dicatat.`);
+      }
+      await Promise.all([kind === "attendance" ? loadAttendance() : loadAdzan(), loadPoints()]);
+      return { ok, failed: failed.length };
+    },
+    [rpcError, showToast, loadAdzan, loadAttendance, loadPoints],
+  );
+
   const addParticipant = useCallback(
     async (nama: string) => {
       const { error } = await supabase.from("participants").insert([{ nama }]);
@@ -1136,6 +1169,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     adzanLog: namedAdzan,
     recordAdzan,
     recordSholawatIqomah,
+    recordActivities,
     redeemPackages,
     redeemHistory,
     requestRedeem,
@@ -1167,7 +1201,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   }), [
     participants, addParticipant, updateParticipantStatus, points, ledgerReady,
     namedAttendance, recordAttendance,
-    namedAdzan, recordAdzan, recordSholawatIqomah, redeemPackages,
+    namedAdzan, recordAdzan, recordSholawatIqomah, recordActivities, redeemPackages,
     redeemHistory, requestRedeem, processRedeem, quizzes, quizAttempts,
     submitQuiz, awardGameWin, addQuiz, updateQuiz, toggleQuizActive, deleteQuiz,
     budgetStatus, toast, showToast, isLoading, quickAbsen, setQuickAbsen,

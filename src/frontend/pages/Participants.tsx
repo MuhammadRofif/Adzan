@@ -66,16 +66,18 @@ const compressImage = (file: File): Promise<Blob> => {
 };
 
 export const Participants: React.FC = () => {
-  const { participants, points, addParticipant, updateParticipantStatus, recordAttendance, recordAdzan, recordSholawatIqomah, uploadAvatar, updateParticipantAvatar } = useApp();
+  const { participants, points, addParticipant, updateParticipantStatus, recordActivities, adzanLog, attendanceLog, uploadAvatar, updateParticipantAvatar } = useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const [multiModal, setMultiModal] = useState(false);
   const [multiType, setMultiType] = useState<'attendance' | 'adzan' | 'sholawat_iqomah'>('attendance');
-  const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
+  // Tanggal lokal (bukan UTC): absen Subuh sebelum 08:00 WITA dulu tercatat ke tanggal kemarin
+  const [customDate, setCustomDate] = useState(() => new Date().toLocaleDateString('en-CA'));
+  const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   
   const [attAttitude, setAttAttitude] = useState('Bagus');
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('aktif');
   const [addModal, setAddModal] = useState(false);
 
   React.useEffect(() => {
@@ -109,6 +111,16 @@ export const Participants: React.FC = () => {
       const pointsB = points[String(b.id)]?.total ?? 0;
       return pointsB - pointsA;
     });
+
+  // Anak yang sudah tercatat untuk jenis & tanggal yang sama → mencegah catat dobel tanpa sengaja
+  const alreadyRecorded = React.useMemo(() => {
+    const rows = multiType === 'attendance'
+      ? attendanceLog
+      : adzanLog.filter(a => (multiType === 'sholawat_iqomah') === (a.adzanPoints === 8));
+    const m = new Map<string, number>();
+    rows.filter(r => r.date === customDate).forEach(r => m.set(String(r.participantId), (m.get(String(r.participantId)) ?? 0) + 1));
+    return m;
+  }, [multiType, customDate, adzanLog, attendanceLog]);
 
   const handleAdd = () => {
     if (!newName.trim()) { setNameError('Nama wajib diisi'); return; }
@@ -167,14 +179,14 @@ export const Participants: React.FC = () => {
             <table className="w-full text-sm">
               <thead className="bg-gray-50/60">
                 <tr>
-                  {['No', 'Nama Peserta', 'Status', 'Catat Aktivitas', 'Jumlah Peran', 'Poin', 'Aksi'].map(h => (
+                  {['No', 'Nama Peserta', 'Status', 'Aktivitas Season', 'Saldo', 'Aksi'].map(h => (
                     <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.map((p, i) => {
-                  const pt = points[p.id] ?? { total: 0, adzanCount: 0, attendance: 0 };
+                  const pt = points[p.id] ?? { total: 0, adzanCount: 0, sholawatIqomahCount: 0, attendanceCount: 0 };
                   return (
                     <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-6 py-4 text-gray-500">{i + 1}</td>
@@ -189,27 +201,17 @@ export const Participants: React.FC = () => {
                           </div>
                           <div>
                             <button onClick={() => setDetailModal(p)} className="font-semibold text-gray-900 hover:text-primary-600 transition-colors text-left">{p.nama}</button>
-                            <p className="text-xs text-gray-400">ID: {p.id}</p>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4"><Badge variant={statusVariants[p.status]}>{statusLabels[p.status]}</Badge></td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 text-xs font-medium text-gray-400 italic">
-                          Klik grid di atas untuk absen cepat
-                        </div>
+                        <span className="text-gray-700 whitespace-nowrap tabular-nums" title="Adzan · Sholawat+Iqomah · Latihan">
+                          📢 {pt.adzanCount ?? 0} · 📿 {pt.sholawatIqomahCount ?? 0} · 🏃 {pt.attendanceCount ?? 0}
+                        </span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-gray-900">Adzan: {pt.adzanCount}×</span>
-                          <span className="text-xs text-gray-500">Sholawat + Iqomah: {pt.sholawatIqomahCount ?? 0}×</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-primary-600">{pt.total} <span className="text-[10px] text-gray-400 font-normal">pts</span></span>
-                          <span className="text-[10px] text-gray-500">Latihan: {pt.attendanceCount}×</span>
-                        </div>
+                        <span className="font-bold text-primary-600 tabular-nums">{pt.total} <span className="text-[10px] text-gray-400 font-normal">pts</span></span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="relative">
@@ -261,21 +263,16 @@ export const Participants: React.FC = () => {
         title={multiType === 'attendance' ? 'Absen Massal Latihan' : multiType === 'sholawat_iqomah' ? 'Absen Massal Sholawat + Iqomah' : 'Absen Massal Adzan'} 
         size="lg"
         footer={<>
-          <Button onClick={() => {
-            selectedIds.forEach(id => {
-              if (multiType === 'attendance') {
-                recordAttendance(id, '', attAttitude, customDate);
-              } else if (multiType === 'sholawat_iqomah') {
-                recordSholawatIqomah(id, '', 'Bagus', customDate);
-              } else {
-                recordAdzan(id, '', 'Bagus', customDate);
-              }
-            });
+          <Button onClick={async () => {
+            if (saving) return;
+            setSaving(true);
+            await recordActivities(multiType, selectedIds, multiType === 'attendance' ? attAttitude : 'Bagus', customDate);
+            setSaving(false);
             setSelectedIds([]);
             setAttAttitude('Bagus');
             setMultiModal(false);
-          }} className="w-full sm:w-auto sm:ml-3" disabled={selectedIds.length === 0}>
-            Simpan {selectedIds.length} Peserta
+          }} className="w-full sm:w-auto sm:ml-3" disabled={selectedIds.length === 0 || saving}>
+            {saving ? 'Menyimpan...' : `Simpan ${selectedIds.length} Peserta`}
           </Button>
           <Button variant="ghost" onClick={() => { setMultiModal(false); setSelectedIds([]); setAttAttitude('Bagus'); }} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
         </>}
@@ -329,9 +326,14 @@ export const Participants: React.FC = () => {
                     setSelectedIds(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]);
                   }}
                 />
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-bold text-xs">{p.nama.charAt(0)}</div>
-                  <span className="font-bold text-gray-800">{p.nama}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-bold text-xs shrink-0">{p.nama.charAt(0)}</div>
+                  <span className="font-bold text-gray-800 truncate">{p.nama}</span>
+                  {alreadyRecorded.has(String(p.id)) && (
+                    <span className="ml-auto shrink-0 text-[10px] font-bold text-amber-700 bg-amber-100 rounded-md px-1.5 py-0.5" title="Sudah dicatat untuk tanggal ini">
+                      ✓ sudah {alreadyRecorded.get(String(p.id))}×
+                    </span>
+                  )}
                 </div>
               </label>
             ))}

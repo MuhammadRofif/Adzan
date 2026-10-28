@@ -71,16 +71,29 @@ revoke truncate on all tables in schema public from anon, authenticated;
 
 -- Storage foto profil: baca publik, unggah/hapus hanya admin.
 do $$
+declare r record;
 begin
   if exists (select 1 from information_schema.tables where table_schema = 'storage' and table_name = 'objects') then
-    execute 'drop policy if exists "media publik baca" on storage.objects';
-    execute 'drop policy if exists "media admin tulis" on storage.objects';
+    -- Policy lama yang membolehkan anon mengunggah/menghapus di bucket media (atau tanpa
+    -- syarat bucket sama sekali) harus dibuang, kalau tidak policy baru tidak ada artinya.
+    for r in
+      select policyname from pg_policies
+       where schemaname = 'storage' and tablename = 'objects'
+         and (coalesce(qual, '') ilike '%media%' or coalesce(with_check, '') ilike '%media%'
+              or (coalesce(qual, '') not ilike '%bucket_id%' and coalesce(with_check, '') not ilike '%bucket_id%'))
+    loop
+      execute format('drop policy %I on storage.objects', r.policyname);
+    end loop;
     execute $p$create policy "media publik baca" on storage.objects for select to anon, authenticated
               using (bucket_id = 'media')$p$;
     execute $p$create policy "media admin tulis" on storage.objects for all to authenticated
               using (bucket_id = 'media' and public.is_admin())
               with check (bucket_id = 'media' and public.is_admin())$p$;
   end if;
+exception when insufficient_privilege then
+  -- Di sebagian project, SQL Editor bukan pemilik storage.objects. Jangan gagalkan
+  -- penguncian tabel karena ini; atur policy Storage lewat Dashboard → Storage → Policies.
+  raise warning 'Policy Storage tidak bisa diubah dari SQL Editor (%). Ubah manual: hapus "Izin Foto Profil", buat SELECT untuk publik & INSERT/UPDATE/DELETE hanya authenticated.', sqlerrm;
 end $$;
 
 commit;

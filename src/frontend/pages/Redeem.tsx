@@ -55,6 +55,12 @@ export const Redeem: React.FC = () => {
   };
 
   const pendingRequests = redeemHistory.filter(r => r.status === 'pending');
+
+  // Tugas utama admin di sini adalah memproses permintaan → buka tab itu bila ada yang menunggu
+  const tabPicked = React.useRef(false);
+  React.useEffect(() => {
+    if (!tabPicked.current && pendingRequests.length > 0) setActiveTab('requests');
+  }, [pendingRequests.length]);
   const filteredHistory = redeemHistory.filter(r => {
     const p = participants.find(x => x.id === r.participantId);
     return !filterSearch || p?.nama.toLowerCase().includes(filterSearch.toLowerCase()) || r.packageName.toLowerCase().includes(filterSearch.toLowerCase());
@@ -100,7 +106,7 @@ export const Redeem: React.FC = () => {
           { key: 'requests', label: `Permintaan${pendingRequests.length > 0 ? ` (${pendingRequests.length})` : ''}` },
           { key: 'history', label: 'Riwayat' },
         ].map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key as any)}
+          <button key={tab.key} onClick={() => { tabPicked.current = true; setActiveTab(tab.key as any); }}
             className={cn('px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200', activeTab === tab.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
             {tab.label}
           </button>
@@ -156,6 +162,9 @@ export const Redeem: React.FC = () => {
             <div className="space-y-3">
               {pendingRequests.map(req => {
                 const p = participants.find(x => x.id === req.participantId);
+                const balance = points[String(req.participantId)]?.total ?? 0;
+                const affordable = balance >= req.pointsSpent;
+                const sameCount = pendingRequests.filter(r => r.participantId === req.participantId && r.packageId === req.packageId).length;
                 return (
                   <div key={req.id} className="card p-5 flex flex-col sm:flex-row sm:items-center gap-4">
                     <div className="flex-1">
@@ -170,6 +179,16 @@ export const Redeem: React.FC = () => {
                         <span className="font-medium text-gray-700">📦 {req.packageName}</span>
                         <span className="text-primary-600 font-bold">-{req.pointsSpent} pts</span>
                         <Badge variant="pending">Pending</Badge>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+                        <span className={cn('font-semibold rounded-md px-2 py-0.5', affordable ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700')}>
+                          Saldo sekarang: {balance} pts {affordable ? '✓ cukup' : '✗ tidak cukup'}
+                        </span>
+                        {sameCount > 1 && (
+                          <span className="font-semibold rounded-md px-2 py-0.5 bg-amber-50 text-amber-700">
+                            ⚠️ Permintaan sama {sameCount}× — kemungkinan tombol ditekan berulang
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-2">

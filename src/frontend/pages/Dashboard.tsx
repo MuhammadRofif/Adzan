@@ -1,562 +1,356 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Users, Target, Award, Clock, ArrowUpRight, ArrowDownRight, TrendingUp, CalendarDays, Mic, CheckCircle2 } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Award, Clock, Flag, Gift, Mic, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
-import { Select } from '../components/ui/index';
 import { cn } from '../utils/cn';
-import { supabase } from '../services/supabase';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { getPangkat } from '../../shared/types';
+import { getPrayerTimes, masjidDayName, PRAYER_NAMES } from '../utils/prayerTimes';
 
-const ATTITUDES = [
-  { label: 'Bagus', points: 5, color: 'border-emerald-400 bg-emerald-50 text-emerald-700' },
-  { label: 'Cukup Bagus', points: 3, color: 'border-yellow-400 bg-yellow-50 text-yellow-700' },
-  { label: 'Ribut', points: 1, color: 'border-red-300 bg-red-50 text-red-700' },
-];
+/** YYYY-MM-DD di zona waktu masjid (WITA). */
+const witaDate = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Makassar' });
 
 export const Dashboard: React.FC = () => {
-  const { participants, points, adzanLog, attendanceLog, recordAttendance, recordAdzan, endSeason, quizAttempts, seasonHistory, allSeasons } = useApp();
+  const {
+    participants, points, adzanLog, attendanceLog, quizAttempts, redeemHistory,
+    schedule, activeSeason, seasonHistory, allSeasons, endSeason,
+  } = useApp();
 
-  const getPastSeasonBadges = (participantId: string | number) => {
-    const pastWins = seasonHistory.filter(h => String(h.participantId) === String(participantId));
-    if (pastWins.length === 0) return [];
-    return pastWins.map(w => {
-      const season = allSeasons.find(s => s.id === w.seasonId);
-      const match = season?.name?.match(/\d+/);
-      const seasonNum = match ? `S${match[0]}` : 'S1';
-      const pLevel = getPangkat(w.finalPoints);
-      const title = pLevel.current.title;
-      if (w.badge === 'gold') return { emoji: '🏆', label: `${title} (${seasonNum})` };
-      if (w.badge === 'silver') return { emoji: '🥈', label: `${title} (${seasonNum})` };
-      if (w.badge === 'bronze') return { emoji: '🥉', label: `${title} (${seasonNum})` };
-      return null;
-    }).filter(Boolean) as { emoji: string; label: string }[];
-  };
+  const [showAll, setShowAll] = useState(false);
+  const [endModal, setEndModal] = useState(false);
+  const [nextName, setNextName] = useState('');
+  const [ending, setEnding] = useState(false);
 
-  const [attendanceModal, setAttendanceModal] = useState(false);
-  const [adzanModal, setAdzanModal] = useState(false);
-  const [attParticipant, setAttParticipant] = useState('');
-  const [adzParticipant, setAdzParticipant] = useState('');
-  const [adzAttitude, setAdzAttitude] = useState('Bagus');
-  const [showAllPerformers, setShowAllPerformers] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState<string>('semua');
+  const now = new Date();
+  const today = witaDate(now);
+  const pendingRedeem = redeemHistory.filter(r => r.status === 'pending');
+  const active = participants.filter(p => p.status === 'aktif');
 
-  const availableMonths = useMemo(() => {
-    const months = new Set<string>();
-    [...adzanLog, ...attendanceLog].forEach(log => {
-      if (log.date) {
-        months.add(log.date.substring(0, 7)); // YYYY-MM
-      }
+  // ── Jadwal petugas hari ini + apakah adzannya sudah dicatat ──
+  const todayDuty = useMemo(() => {
+    const times = getPrayerTimes(now);
+    const day = masjidDayName(now);
+    const adzanToday = new Set(adzanLog.filter(a => a.date === today).map(a => String(a.participantId)));
+    return PRAYER_NAMES.map((prayer, i) => {
+      const name = schedule[day]?.[prayer];
+      const kid = participants.find(p => p.nama.toLowerCase() === name?.toLowerCase());
+      return {
+        prayer,
+        time: times[i].label,
+        passed: times[i].at.getTime() < now.getTime(),
+        name: name && !['Kosong', 'LOCKED'].includes(name) ? name : null,
+        done: kid ? adzanToday.has(String(kid.id)) : false,
+      };
     });
-    return Array.from(months).sort(); // Ascending (May, June, July)
-  }, [adzanLog, attendanceLog]);
+  }, [adzanLog, schedule, participants, today]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const formatMonth = (yyyyMM: string) => {
-    const [y, m] = yyyyMM.split('-');
-    const date = new Date(parseInt(y), parseInt(m) - 1);
-    return date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
-  };
-
-  // --- NEW AGGREGATED STATS LOGIC ---
-  const [chartFilter, setChartFilter] = useState<'semua'|'adzan'|'sholawat'|'attendance'|'quiz'>('semua');
-
-  // Gunakan data real dari context
-  const allLogs = useMemo(() => {
-    let logs = [
-      ...adzanLog.map(d => ({ date: d.date, type: d.adzanPoints === 8 ? 'sholawat' as const : 'adzan' as const })),
-      ...attendanceLog.map(d => ({ date: d.date, type: 'attendance' as const })),
-      ...quizAttempts.map(d => ({ date: new Date(d.completedAt).toISOString(), type: 'quiz' as const }))
-    ];
-    if (selectedMonth !== 'semua') {
-      logs = logs.filter(log => log.date && log.date.startsWith(selectedMonth));
-    }
-    return logs;
-  }, [adzanLog, attendanceLog, quizAttempts, selectedMonth]);
-
-  const filteredLogs = useMemo(() => {
-    if (chartFilter === 'semua') return allLogs;
-    return allLogs.filter(log => log.type === chartFilter);
-  }, [allLogs, chartFilter]);
-
-  const { counts, last30DaysData, monthlyData } = useMemo(() => {
-    let refDate = new Date();
-    if (selectedMonth !== 'semua') {
-      const [y, m] = selectedMonth.split('-');
-      // Akhir dari bulan yang dipilih
-      refDate = new Date(parseInt(y), parseInt(m), 0);
-      
-      const now = new Date();
-      // Jika bulan yang dipilih adalah bulan ini, gunakan tanggal hari ini
-      if (refDate.getMonth() === now.getMonth() && refDate.getFullYear() === now.getFullYear()) {
-        refDate = now;
-      }
-    }
-
-    const isSameDay = (d1: Date, d2: Date) => d1.toDateString() === d2.toDateString();
-    const getStartOfWeek = (d: Date) => {
-      const date = new Date(d);
-      const day = date.getDay();
-      const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-      return new Date(date.setHours(0,0,0,0) + diff * 86400000);
+  // ── Ringkasan aktivitas season berjalan ──
+  const stats = useMemo(() => {
+    const days = (d: string) => Math.floor((new Date(today).getTime() - new Date(d).getTime()) / 86_400_000);
+    const quizDates = quizAttempts.filter(q => q.earnedPoints > 0).map(q => witaDate(new Date(q.completedAt)));
+    const all = [...adzanLog.map(a => a.date), ...attendanceLog.map(a => a.date), ...quizDates];
+    const perDay = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(now.getTime() - (13 - i) * 86_400_000);
+      const key = witaDate(d);
+      return {
+        key,
+        label: d.toLocaleDateString('id-ID', { day: 'numeric', timeZone: 'Asia/Makassar' }),
+        weekday: d.toLocaleDateString('id-ID', { weekday: 'narrow', timeZone: 'Asia/Makassar' }),
+        adzan: adzanLog.filter(a => a.date === key).length,
+        latihan: attendanceLog.filter(a => a.date === key).length,
+        quiz: quizDates.filter(q => q === key).length,
+      };
+    });
+    const sum = (k: 'adzanCount' | 'sholawatIqomahCount' | 'attendanceCount' | 'quizCount') =>
+      Object.values(points).reduce((s, p) => s + (p[k] || 0), 0);
+    return {
+      today: all.filter(d => d === today).length,
+      week: all.filter(d => days(d) >= 0 && days(d) < 7).length,
+      season: all.length,
+      adzan: sum('adzanCount'),
+      sholawat: sum('sholawatIqomahCount'),
+      latihan: sum('attendanceCount'),
+      quiz: sum('quizCount'),
+      perDay,
+      maxDay: Math.max(1, ...perDay.map(d => d.adzan + d.latihan + d.quiz)),
     };
+  }, [adzanLog, attendanceLog, quizAttempts, points, today]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const today = refDate;
-    const yesterday = new Date(refDate); yesterday.setDate(yesterday.getDate() - 1);
-    const thisWeekStart = getStartOfWeek(refDate);
-    const lastWeekStart = new Date(thisWeekStart); lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-    const lastWeekEnd = new Date(thisWeekStart); lastWeekEnd.setDate(lastWeekEnd.getDate() - 1);
-    
-    const thisMonth = refDate.getMonth();
-    const thisYear = refDate.getFullYear();
-    const lastMonth = thisMonth === 0 ? 11 : thisMonth - 1;
-    const lastMonthYear = thisMonth === 0 ? thisYear - 1 : thisYear;
-    const lastYear = thisYear - 1;
-
-    let cnts = {
-      today: 0, yesterday: 0,
-      thisWeek: 0, lastWeek: 0,
-      thisMonth: 0, lastMonth: 0,
-      thisYear: 0, lastYear: 0,
-      allTime: filteredLogs.length
-    };
-
-    const d30: { name: string, fullDate: Date, jumlah: number }[] = [];
-    let chartStartDate = new Date(refDate);
-    chartStartDate.setDate(chartStartDate.getDate() - 29); // Default 30 days
-
-    if (selectedMonth === 'semua' || selectedMonth.startsWith('2026-07')) {
-      const julyFirst = new Date(2026, 6, 1); // 1 Juli 2026
-      if (julyFirst < refDate) {
-        chartStartDate = julyFirst;
-      }
-    } else {
-      const [y, m] = selectedMonth.split('-');
-      chartStartDate = new Date(parseInt(y), parseInt(m) - 1, 1);
-    }
-
-    const currentDay = new Date(chartStartDate);
-    while (currentDay <= refDate) {
-      d30.push({
-        name: currentDay.toLocaleDateString('id-ID', { month: 'short', day: 'numeric' }),
-        fullDate: new Date(currentDay),
-        jumlah: 0
-      });
-      currentDay.setDate(currentDay.getDate() + 1);
-    }
-
-    const mDataMap = new Map<string, number>();
-
-    filteredLogs.forEach(log => {
-      const d = new Date(log.date);
-      
-      if (isSameDay(d, today)) cnts.today++;
-      if (isSameDay(d, yesterday)) cnts.yesterday++;
-      
-      if (d >= thisWeekStart && d <= today) cnts.thisWeek++;
-      if (d >= lastWeekStart && d <= lastWeekEnd) cnts.lastWeek++;
-      
-      if (d.getMonth() === thisMonth && d.getFullYear() === thisYear && d <= today) cnts.thisMonth++;
-      if (d.getMonth() === lastMonth && d.getFullYear() === lastMonthYear) cnts.lastMonth++;
-      
-      if (d.getFullYear() === thisYear && d <= today) cnts.thisYear++;
-      if (d.getFullYear() === lastYear) cnts.lastYear++;
-
-      // 30 Days chart relative to refDate
-      const diffTime = refDate.getTime() - d.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      if (diffDays >= 0 && diffDays <= 30) {
-        const target = d30.find(item => isSameDay(item.fullDate, d));
-        if (target) target.jumlah++;
-      }
-
-      // Monthly chart
-      const monthKey = d.toLocaleDateString('id-ID', { year: 'numeric', month: 'short' });
-      mDataMap.set(monthKey, (mDataMap.get(monthKey) || 0) + 1);
+  // ── Klasemen season (saldo), plus juara season lalu ──
+  const ranking = useMemo(() => [...active].sort((a, b) => (points[b.id]?.total ?? 0) - (points[a.id]?.total ?? 0)), [active, points]);
+  const pastBadges = (id: string | number) => seasonHistory
+    .filter(h => String(h.participantId) === String(id) && h.badge)
+    .map(h => {
+      const n = allSeasons.find(s => s.id === h.seasonId)?.name.match(/\d+/)?.[0] ?? '?';
+      return { emoji: h.badge === 'gold' ? '🏆' : h.badge === 'silver' ? '🥈' : '🥉', label: `Juara ${h.rank} S${n}` };
     });
 
-    const mData = Array.from(mDataMap.entries())
-      .map(([name, jumlah]) => {
-         const [mStr, yStr] = name.split(' ');
-         return { name, jumlah, timestamp: new Date(`1 ${mStr} ${yStr}`).getTime() };
-      })
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(-12);
+  const recent = useMemo(() => [...adzanLog, ...attendanceLog]
+    .sort((a, b) => (b.createdAt?.getTime() ?? new Date(b.date).getTime()) - (a.createdAt?.getTime() ?? new Date(a.date).getTime()))
+    .slice(0, 8), [adzanLog, attendanceLog]);
 
-    // If a specific month is selected, the "monthlyData" chart will only have 1 bar natively.
-    // That's correct since we only have data for that month in filteredLogs.
-    return { counts: cnts, last30DaysData: d30, monthlyData: mData };
-  }, [filteredLogs, selectedMonth]);
+  const seasonDay = activeSeason ? Math.floor((now.getTime() - activeSeason.startDate.getTime()) / 86_400_000) + 1 : 0;
 
-  const getFilterCount = (id: string) => {
-    const p = points[id];
-    if (!p) return 0;
-    switch (chartFilter) {
-      case 'adzan': return p.adzanCount || 0;
-      case 'sholawat': return p.sholawatIqomahCount || 0;
-      case 'attendance': return p.attendanceCount || 0;
-      case 'quiz': return p.quizCount || 0;
-      default: return (p.adzanCount || 0) + (p.sholawatIqomahCount || 0) + (p.attendanceCount || 0) + (p.quizCount || 0);
-    }
+  const handleEndSeason = async () => {
+    if (!nextName.trim() || ending) return;
+    setEnding(true);
+    const res = await endSeason(nextName.trim());
+    setEnding(false);
+    if (res.success) { setEndModal(false); setNextName(''); }
   };
-
-  const allPerformers = [...participants]
-    .filter(p => p.status === 'aktif')
-    .sort((a, b) => {
-      if (chartFilter === 'semua') {
-        return (points[b.id]?.grossTotal ?? 0) - (points[a.id]?.grossTotal ?? 0);
-      }
-      return getFilterCount(b.id) - getFilterCount(a.id);
-    });
-  const topFive = allPerformers.slice(0, 5);
-  const recentActivity = useMemo(() => {
-    let combined = [...adzanLog, ...attendanceLog];
-    if (selectedMonth !== 'semua') {
-      combined = combined.filter(log => log.date && log.date.startsWith(selectedMonth));
-    }
-    return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
-  }, [adzanLog, attendanceLog, selectedMonth]);
-
-  const statCards = [
-    { title: 'Hari Ini', current: counts.today, prev: counts.yesterday, prevLabel: 'Kemarin' },
-    { title: 'Pekan Ini', current: counts.thisWeek, prev: counts.lastWeek, prevLabel: 'Pekan Lalu' },
-    { title: 'Bulan Ini', current: counts.thisMonth, prev: counts.lastMonth, prevLabel: 'Bulan Lalu' },
-    { title: 'Tahun Ini', current: counts.thisYear, prev: counts.lastYear, prevLabel: 'Tahun Lalu' },
-  ];
-
-  // Cek apakah bulan yang dipilih adalah bulan saat ini
-  const isCurrentMonth = useMemo(() => {
-    if (selectedMonth === 'semua') return true;
-    const now = new Date();
-    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    return selectedMonth === currentYM;
-  }, [selectedMonth]);
-
-  // Rekap per jenis aktivitas untuk bulan yang dipilih
-  const monthlyRecap = useMemo(() => {
-    let adzanCount = 0, sholawatCount = 0, attendanceCount = 0, quizCount = 0;
-    allLogs.forEach(log => {
-      if (log.type === 'adzan') adzanCount++;
-      else if (log.type === 'sholawat') sholawatCount++;
-      else if (log.type === 'attendance') attendanceCount++;
-      else if (log.type === 'quiz') quizCount++;
-    });
-    return { adzanCount, sholawatCount, attendanceCount, quizCount };
-  }, [allLogs]);
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
+    <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
       {/* Header */}
       <div className="section-header">
         <div>
-          <h1 className="page-title">Dashboard Season 1</h1>
-          <p className="page-subtitle">Pantau statistik adzan dan kehadiran peserta untuk Season 1</p>
+          <h1 className="page-title">Dashboard {activeSeason?.name ?? ''}</h1>
+          <p className="page-subtitle">
+            {activeSeason
+              ? `Mulai ${activeSeason.startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })} · hari ke-${seasonDay} · ${active.length} anak aktif`
+              : 'Belum ada season aktif'}
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <select 
-            className="input text-sm py-2 px-3 pr-8 min-w-[140px] font-medium"
-            value={selectedMonth}
-            onChange={e => setSelectedMonth(e.target.value)}
-          >
-            <option value="semua">Semua Waktu</option>
-            {availableMonths.map(m => (
-              <option key={m} value={m}>{formatMonth(m)}</option>
+        <Button variant="outline" leftIcon={<Flag className="w-4 h-4" />} onClick={() => setEndModal(true)} disabled={!activeSeason}>
+          Akhiri Season
+        </Button>
+      </div>
+
+      {/* Perlu tindakan */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Link
+          to="/admin/redeem"
+          className={cn('card p-5 flex items-center gap-4', pendingRedeem.length > 0 ? 'border-amber-300 bg-amber-50' : '')}
+        >
+          <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0"><Gift className="w-6 h-6" /></div>
+          <div className="min-w-0">
+            <p className="text-sm text-gray-500">Permintaan hadiah menunggu</p>
+            <p className="text-2xl font-black text-gray-900">{pendingRedeem.length}</p>
+            {pendingRedeem.length > 0 && (
+              <p className="text-xs text-amber-700 font-semibold truncate">
+                Tertua: {pendingRedeem[pendingRedeem.length - 1].requestedAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} → Proses
+              </p>
+            )}
+          </div>
+        </Link>
+        <div className="card p-5 md:col-span-2">
+          <p className="text-sm text-gray-500 mb-3">Absen cepat (bisa banyak anak sekaligus)</p>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { action: 'adzan', label: 'Adzan', icon: '📢', pts: '+10' },
+              { action: 'sholawat_iqomah', label: 'Sholawat + Iqomah', icon: '📿', pts: '+8' },
+              { action: 'attendance', label: 'Latihan', icon: '🏃', pts: '+1–5' },
+            ].map(a => (
+              <Link
+                key={a.action}
+                to={`/admin/participants?action=${a.action}`}
+                className="rounded-xl border-2 border-gray-100 hover:border-primary-300 hover:bg-primary-50 p-3 text-center transition-colors"
+              >
+                <span className="block text-2xl" aria-hidden>{a.icon}</span>
+                <span className="block text-sm font-bold text-gray-900">{a.label}</span>
+                <span className="block text-xs text-gray-500">{a.pts} poin</span>
+              </Link>
             ))}
-          </select>
+          </div>
         </div>
       </div>
-      <div className="space-y-6">
-          <div className="flex flex-wrap items-center gap-2 bg-gray-100/80 p-1.5 rounded-xl w-full sm:w-fit border border-gray-200/50">
-            {(['semua', 'adzan', 'sholawat', 'attendance', 'quiz'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setChartFilter(tab)}
-                className={cn(
-                  "px-4 py-1.5 rounded-lg text-sm font-bold transition-all capitalize",
-                  chartFilter === tab ? "bg-white text-primary-600 shadow-sm" : "text-gray-500 hover:text-gray-700 hover:bg-gray-200/50"
-                )}
-              >
-                {tab === 'attendance' ? 'Latihan' : tab === 'sholawat' ? 'Sholawat+Iqomah' : tab === 'quiz' ? 'Quiz' : tab}
-              </button>
+
+      {/* Jadwal hari ini */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-bold text-gray-900 font-heading">Petugas Adzan Hari Ini · {masjidDayName(now)}</h2>
+          <Link to="/admin/schedule" className="text-sm text-primary-600 font-semibold hover:underline">Ubah jadwal</Link>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {todayDuty.map(d => (
+            <div
+              key={d.prayer}
+              className={cn('rounded-xl border p-3',
+                d.done ? 'border-emerald-200 bg-emerald-50'
+                  : d.passed && d.name ? 'border-amber-200 bg-amber-50'
+                    : 'border-gray-100 bg-gray-50')}
+            >
+              <p className="text-xs text-gray-500">{d.prayer} · {d.time}</p>
+              <p className="font-bold text-gray-900 truncate">{d.name ?? '—'}</p>
+              <p className={cn('text-xs font-semibold', d.done ? 'text-emerald-700' : d.passed && d.name ? 'text-amber-700' : 'text-gray-400')}>
+                {!d.name ? 'Tidak ada petugas' : d.done ? '✅ Sudah adzan hari ini' : d.passed ? '⏳ Belum dicatat' : 'Belum waktunya'}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Statistik season + grafik 14 hari */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="card p-5 space-y-4">
+          <div className="grid grid-cols-3 gap-3 text-center">
+            {[
+              { label: 'Hari ini', value: stats.today },
+              { label: '7 hari', value: stats.week },
+              { label: 'Season ini', value: stats.season },
+            ].map(s => (
+              <div key={s.label} className="rounded-xl bg-gray-50 p-3">
+                <p className="text-2xl font-black text-gray-900">{s.value}</p>
+                <p className="text-xs text-gray-500">{s.label}</p>
+              </div>
             ))}
           </div>
-
-          {/* Stat Cards - Rekap bulan lalu vs hari ini/pekan/bulan */}
-          {isCurrentMonth ? (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {statCards.map(s => (
-                <div key={s.title} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-                  <p className="text-sm font-medium text-gray-500 mb-1">{s.title}</p>
-                  <p className="text-3xl font-black text-gray-900 mb-2">{s.current}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500 font-medium">
-                      {s.prev} <span className="font-normal text-gray-400">{s.prevLabel.toLowerCase()}</span>
-                    </span>
-                  </div>
-                </div>
-              ))}
-              <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 shadow-sm text-white md:col-span-1 col-span-2 flex flex-col justify-between">
-                <div>
-                  <p className="text-sm font-medium text-white/80 mb-1">Semua Waktu</p>
-                  <p className="text-3xl font-black mb-2">{counts.allTime}</p>
-                </div>
-                <div className="flex items-center gap-1 text-xs text-white/70">
-                  <Target className="w-4 h-4" /> Total Aktivitas
-                </div>
+          <div className="grid grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-2 text-sm">
+            {[
+              { label: '📢 Adzan', value: stats.adzan },
+              { label: '📿 Sholawat', value: stats.sholawat },
+              { label: '🏃 Latihan', value: stats.latihan },
+              { label: '🎮 Quiz', value: stats.quiz },
+            ].map(s => (
+              <div key={s.label} className="flex justify-between gap-2 whitespace-nowrap rounded-lg border border-gray-100 px-3 py-2">
+                <span className="text-gray-600">{s.label}</span>
+                <span className="font-bold text-gray-900">{s.value}×</span>
               </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {[
-                { title: 'Adzan', count: monthlyRecap.adzanCount, icon: '📢', color: 'from-blue-500 to-blue-600' },
-                { title: 'Sholawat+Iqomah', count: monthlyRecap.sholawatCount, icon: '📿', color: 'from-purple-500 to-purple-600' },
-                { title: 'Latihan Hadir', count: monthlyRecap.attendanceCount, icon: '✅', color: 'from-emerald-500 to-emerald-600' },
-                { title: 'Quiz', count: monthlyRecap.quizCount, icon: '🧠', color: 'from-amber-500 to-amber-600' },
-              ].map(s => (
-                <div key={s.title} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-                  <p className="text-2xl mb-1">{s.icon}</p>
-                  <p className="text-sm font-medium text-gray-500 mb-1">{s.title}</p>
-                  <p className="text-3xl font-black text-gray-900">{s.count}×</p>
-                </div>
-              ))}
-              <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 shadow-sm text-white md:col-span-1 col-span-2 flex flex-col justify-between">
-                <div>
-                  <p className="text-sm font-medium text-white/80 mb-1">Total Aktivitas</p>
-                  <p className="text-3xl font-black mb-2">{counts.allTime}</p>
-                </div>
-                <div className="flex items-center gap-1 text-xs text-white/70">
-                  <Target className="w-4 h-4" /> {formatMonth(selectedMonth)}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-                  <TrendingUp className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 font-heading">Grafik Aktivitas</h3>
-                  <p className="text-xs text-gray-500">30 Hari Terakhir</p>
-                </div>
-              </div>
-              <div className="h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={last30DaysData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorJumlah" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} minTickGap={20} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                      labelStyle={{ color: '#64748b', fontSize: '12px', marginBottom: '4px' }}
-                    />
-                    <Area type="monotone" dataKey="jumlah" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorJumlah)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-                  <CalendarDays className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 font-heading">Grafik Per Bulan</h3>
-                  <p className="text-xs text-gray-500">12 Bulan Terakhir</p>
-                </div>
-              </div>
-              <div className="h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                    <Tooltip 
-                      cursor={{ fill: '#f8fafc' }}
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    />
-                    <Bar dataKey="jumlah" fill="#10b981" radius={[4, 4, 0, 0]} barSize={30} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
-      {/* Main grid (Old layout for Leaderboard & Activity) */}
+
+        {/* Grafik batang ringan (CSS) — menggantikan recharts ±110 KB */}
+        <div className="card p-5 lg:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold text-gray-900 font-heading">Aktivitas 14 Hari Terakhir</h2>
+            <div className="flex gap-3 text-xs text-gray-500">
+              <span className="flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-sm bg-sky-500" />Adzan</span>
+              <span className="flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-sm bg-emerald-400" />Latihan</span>
+              <span className="flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-sm bg-amber-400" />Quiz</span>
+            </div>
+          </div>
+          <div className="flex items-end gap-1.5 h-40" role="img" aria-label="Grafik aktivitas 14 hari terakhir">
+            {stats.perDay.map(d => {
+              const total = d.adzan + d.latihan + d.quiz;
+              const h = (n: number) => `${(n / stats.maxDay) * 100}%`;
+              return (
+                <div key={d.key} className="flex-1 h-full flex flex-col justify-end items-center gap-1" title={`${d.key}: adzan ${d.adzan}, latihan ${d.latihan}, quiz ${d.quiz}`}>
+                  <span className="text-[10px] text-gray-500 font-semibold">{total || ''}</span>
+                  <div className="w-full flex flex-col justify-end rounded-t-md overflow-hidden bg-gray-50" style={{ height: '100%' }}>
+                    <div className="bg-amber-400" style={{ height: h(d.quiz) }} />
+                    <div className="bg-emerald-400" style={{ height: h(d.latihan) }} />
+                    <div className="bg-sky-500" style={{ height: h(d.adzan) }} />
+                  </div>
+                  <span className={cn('text-[10px]', d.key === today ? 'font-bold text-gray-900' : 'text-gray-400')}>{d.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Klasemen & aktivitas terbaru */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Leaderboard */}
         <div className="lg:col-span-2 card p-0 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-gray-900 font-heading">Top Performers</h2>
-              <p className="text-sm text-gray-500">Musim Ini</p>
+              <h2 className="font-bold text-gray-900 font-heading">Klasemen {activeSeason?.name ?? ''}</h2>
+              <p className="text-xs text-gray-500">Saldo season berjalan (sudah dikurangi hadiah)</p>
             </div>
             <Award className="w-5 h-5 text-primary-500" />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50/60">
+              <thead className="bg-gray-50/60 text-xs text-gray-500 uppercase">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Peserta</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Aktivitas</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Total Poin</th>
+                  <th className="px-4 py-2.5 text-left">#</th>
+                  <th className="px-4 py-2.5 text-left">Anak</th>
+                  <th className="px-4 py-2.5 text-center" title="Adzan / Sholawat / Latihan / Quiz">📢 📿 🏃 🎮</th>
+                  <th className="px-4 py-2.5 text-right">Saldo</th>
+                  <th className="px-4 py-2.5 text-right hidden sm:table-cell" title="Termasuk poin akhir season-season lalu">Sepanjang masa</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {topFive.map((p, i) => (
-                  <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <span className={cn('w-7 h-7 rounded-full inline-flex items-center justify-center text-xs font-bold',
-                        i === 0 ? 'bg-yellow-100 text-yellow-600' : i === 1 ? 'bg-gray-200 text-gray-600' : i === 2 ? 'bg-orange-100 text-orange-600' : 'text-gray-400'
-                      )}>{i + 1}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs">{p.nama.charAt(0)}</div>
-                        <span className="font-medium text-gray-900 flex items-center gap-1.5">
-                          {p.nama}
-                          {getPastSeasonBadges(p.id).map((b, idx) => (
-                           <span key={idx} title={b.label} className="inline-flex items-center text-[10px] bg-amber-50 border border-amber-200 text-amber-700 px-1.5 py-0.5 rounded-md font-bold shadow-sm select-none">
-                             {b.emoji} {b.label}
-                           </span>
-                         ))}
+                {(showAll ? ranking : ranking.slice(0, 10)).map((p, i) => {
+                  const pt = points[p.id];
+                  return (
+                    <tr key={p.id} className="hover:bg-gray-50/50">
+                      <td className="px-4 py-3 font-bold text-gray-400">{i + 1}</td>
+                      <td className="px-4 py-3">
+                        <span className="font-semibold text-gray-900">{p.nama}</span>
+                        <span className="block text-xs text-gray-500">
+                          {getPangkat(pt?.total ?? 0).current.emoji} {getPangkat(pt?.total ?? 0).current.title}
+                          {pastBadges(p.id).map((b, j) => <span key={j} title={b.label} className="ml-1">{b.emoji}</span>)}
                         </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-600">{getFilterCount(p.id)}×</td>
-                    <td className="px-6 py-4 font-bold text-primary-600">{points[p.id]?.grossTotal ?? 0} pts</td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3 text-center text-gray-600 tabular-nums whitespace-nowrap">
+                        {pt?.adzanCount ?? 0} · {pt?.sholawatIqomahCount ?? 0} · {pt?.attendanceCount ?? 0} · {pt?.quizCount ?? 0}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-primary-600 tabular-nums">{pt?.total ?? 0}</td>
+                      <td className="px-4 py-3 text-right text-gray-500 tabular-nums hidden sm:table-cell">{pt?.grossTotal ?? 0}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-center">
-              <Button onClick={() => setShowAllPerformers(true)} variant="outline" className="text-sm">
-                Lihat Keseluruhan Peserta
-              </Button>
-            </div>
           </div>
+          {ranking.length > 10 && (
+            <button onClick={() => setShowAll(v => !v)} className="w-full py-3 text-sm font-semibold text-primary-600 bg-gray-50 border-t border-gray-100 hover:bg-gray-100">
+              {showAll ? 'Tampilkan 10 besar saja' : `Lihat semua ${ranking.length} anak`}
+            </button>
+          )}
         </div>
 
-        {/* Right Column: Recent Activity */}
-        <div className="space-y-6">
-          <div className="card p-0 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-gray-900 font-heading">Aktivitas Terbaru</h3>
-                <p className="text-sm text-gray-500">{selectedMonth === 'semua' ? 'Season 1' : formatMonth(selectedMonth)}</p>
-              </div>
-              <Clock className="w-4 h-4 text-gray-400" />
-            </div>
-            <div className="p-4 space-y-4">
-              {recentActivity.map((log: any, idx: number) => (
-                <div key={idx} className="flex gap-4 p-3 hover:bg-gray-50 rounded-xl transition-colors">
-                  <div className={cn(
-                    'w-10 h-10 rounded-full flex items-center justify-center shrink-0',
-                    'attitude' in log ? 'bg-primary-100 text-primary-600' : 'bg-emerald-100 text-emerald-600'
-                  )}>
-                    {'attitude' in log ? <Mic className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900 text-sm">{log.participantName}</p>
-                    <p className="text-xs text-gray-500 mb-1">
-                      {'attitude' in log ? `Adzan ${log.prayerTime} • Sikap: ${log.attitude}` : `Absen ${log.prayerTime}`}
-                    </p>
-                    <p className="text-[10px] text-gray-400 font-medium">
-                      {new Date(log.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {recentActivity.length === 0 && (
-                <p className="text-center text-gray-500 py-8 text-sm">Belum ada aktivitas</p>
-              )}
-            </div>
+        <div className="card p-0 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="font-bold text-gray-900 font-heading">Aktivitas Terbaru</h2>
+            <Clock className="w-4 h-4 text-gray-400" />
           </div>
+          <ul className="p-3 space-y-1">
+            {recent.map(log => {
+              const isAdzan = 'attitude' in log;
+              const label = isAdzan ? ((log as any).adzanPoints === 8 ? 'Sholawat + Iqomah' : 'Adzan') : 'Latihan';
+              return (
+                <li key={`${label}-${log.id}`} className="flex gap-3 p-2 rounded-xl hover:bg-gray-50">
+                  <span className={cn('w-9 h-9 rounded-full flex items-center justify-center shrink-0', isAdzan ? 'bg-sky-100 text-sky-600' : 'bg-emerald-100 text-emerald-600')}>
+                    {isAdzan ? <Mic className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm truncate">{log.participantName}</p>
+                    <p className="text-xs text-gray-500">
+                      {label}{log.prayerTime ? ` ${log.prayerTime}` : ''} · {new Date(log.date).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+            {recent.length === 0 && <li className="text-center text-gray-500 py-8 text-sm">Belum ada aktivitas di season ini</li>}
+          </ul>
         </div>
       </div>
 
-      {/* Attendance Modal */}
-      <Modal isOpen={attendanceModal} onClose={() => { setAttendanceModal(false); setAttParticipant(''); }} title="Catat Latihan & Sikap Bagus"
+      {/* Akhiri season */}
+      <Modal
+        isOpen={endModal}
+        onClose={() => setEndModal(false)}
+        title={`Akhiri ${activeSeason?.name ?? 'season'}?`}
         footer={<>
-          <Button onClick={() => { if (attParticipant) { recordAttendance(attParticipant, ''); setAttendanceModal(false); setAttParticipant(''); } }} className="w-full sm:w-auto sm:ml-3" disabled={!attParticipant}>Simpan</Button>
-          <Button variant="ghost" onClick={() => { setAttendanceModal(false); setAttParticipant(''); }} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
+          <Button onClick={handleEndSeason} disabled={!nextName.trim() || ending} className="w-full sm:w-auto sm:ml-3">
+            {ending ? 'Menyimpan...' : 'Akhiri & mulai season baru'}
+          </Button>
+          <Button variant="ghost" onClick={() => setEndModal(false)} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
         </>}
       >
-        <div className="space-y-4">
-          <Select label="Nama Peserta" value={attParticipant} onChange={e => setAttParticipant(e.target.value)}>
-            <option value="">Pilih Peserta...</option>
-            {participants.filter(p => p.status === 'aktif').map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
-          </Select>
-        </div>
-      </Modal>
-
-      {/* Adzan Modal */}
-      <Modal isOpen={adzanModal} onClose={() => { setAdzanModal(false); setAdzParticipant(''); setAdzAttitude('Bagus'); }} title="Catat Adzan"
-        footer={<>
-          <Button onClick={() => { if (adzParticipant) { recordAdzan(adzParticipant, '', adzAttitude); setAdzanModal(false); setAdzParticipant(''); setAdzAttitude('Bagus'); } }} className="w-full sm:w-auto sm:ml-3" disabled={!adzParticipant}>Simpan (+10 Poin)</Button>
-          <Button variant="ghost" onClick={() => { setAdzanModal(false); setAdzParticipant(''); setAdzAttitude('Bagus'); }} className="mt-3 sm:mt-0 w-full sm:w-auto">Batal</Button>
-        </>}
-      >
-        <div className="space-y-4">
-          <Select label="Nama Peserta" value={adzParticipant} onChange={e => setAdzParticipant(e.target.value)}>
-            <option value="">Pilih Peserta...</option>
-            {participants.filter(p => p.status === 'aktif').map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
-          </Select>
-          <div>
-            <label className="label">Penilaian Sikap</label>
-            <div className="grid grid-cols-3 gap-3">
-              {ATTITUDES.map(att => (
-                <button key={att.label} onClick={() => setAdzAttitude(att.label)}
-                  className={cn('border-2 rounded-xl p-3 text-center transition-all duration-200', att.label === adzAttitude ? att.color + ' border-opacity-100' : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300')}>
-                  <span className="block text-sm font-semibold">{att.label}</span>
-                </button>
-              ))}
-            </div>
+        <div className="space-y-4 text-sm">
+          <p className="text-gray-600">
+            Klasemen akhir disimpan ke Hall of Fame dan saldo semua anak mulai dari 0 di season baru.
+            Poin season ini tetap terhitung di "sepanjang masa". Tindakan ini tidak bisa dibatalkan.
+          </p>
+          <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
+            <p className="font-semibold text-amber-900 mb-1">Juara saat ini</p>
+            {ranking.slice(0, 3).map((p, i) => (
+              <p key={p.id} className="text-amber-800">{['🥇', '🥈', '🥉'][i]} {p.nama} — {points[p.id]?.total ?? 0} poin</p>
+            ))}
+            {pendingRedeem.length > 0 && (
+              <p className="text-amber-700 mt-2">⚠️ Masih ada {pendingRedeem.length} permintaan hadiah pending — sebaiknya diproses dulu.</p>
+            )}
           </div>
-        </div>
-      </Modal>
-      <Modal isOpen={showAllPerformers} onClose={() => setShowAllPerformers(false)} title="Semua Peserta (Peringkat)" size="lg">
-        <div className="overflow-x-auto max-h-[60vh] custom-scrollbar">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50/60 sticky top-0 z-10 shadow-sm">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Peserta</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Aktivitas</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Total Poin</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {allPerformers.map((p, i) => (
-                <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <span className={cn('w-7 h-7 rounded-full inline-flex items-center justify-center text-xs font-bold',
-                      i === 0 ? 'bg-yellow-100 text-yellow-600' : i === 1 ? 'bg-gray-200 text-gray-600' : i === 2 ? 'bg-orange-100 text-orange-600' : 'text-gray-400'
-                    )}>{i + 1}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs">{p.nama.charAt(0)}</div>
-                      <span className="font-medium text-gray-900">{p.nama}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">{getFilterCount(p.id)}×</td>
-                  <td className="px-6 py-4 font-bold text-primary-600">{points[p.id]?.grossTotal ?? 0} pts</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div>
+            <label htmlFor="next-season" className="label">Nama season baru</label>
+            <input id="next-season" className="input" placeholder="mis. Season 3" value={nextName} onChange={e => setNextName(e.target.value)} />
+          </div>
         </div>
       </Modal>
     </div>
