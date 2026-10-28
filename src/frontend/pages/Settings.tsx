@@ -4,6 +4,7 @@ import { SectionHeader, Card, ProgressBar } from '../components/ui/index';
 import { Button } from '../components/ui/Button';
 import { useApp } from '../context/AppContext';
 import { cn } from '../utils/cn';
+import { DataHealthCard } from '../components/dashboard/DataHealthCard';
 
 const SettingRow: React.FC<{ icon: React.ReactNode; title: string; description: string; action: React.ReactNode; color?: string }> = ({ icon, title, description, action, color = 'bg-gray-100 text-gray-500' }) => (
   <div className="flex items-center justify-between py-4 border-b border-gray-50 last:border-0 gap-4">
@@ -115,6 +116,8 @@ export const Settings: React.FC = () => {
             </div>
           </div>
         </Card>
+
+        <DataHealthCard />
 
         {/* Database Migration */}
         <Card className="md:col-span-2 border-amber-200 bg-amber-50">

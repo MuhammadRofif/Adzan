@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
 import { cn } from '../../utils/cn';
 import { Toast } from '../ui/Toast';
+import { hijriDateLabel } from '../../utils/prayerTimes';
 
 const bocilNavItems = [
-  { name: 'Dashboard', href: '/', emoji: '🏠' },
-  { name: 'Quiz', href: '/quiz', emoji: '📝' },
+  { name: 'Beranda', href: '/', emoji: '🏠' },
+  { name: 'Quiz', href: '/quiz', emoji: '🎮' },
   { name: 'Hadiah', href: '/redeem', emoji: '🎁' },
   { name: 'Juara', href: '/seasons', emoji: '🏆' },
 ];
 
 export const BocilLayout: React.FC = () => {
-  const location = useLocation();
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -19,59 +19,53 @@ export const BocilLayout: React.FC = () => {
     return () => clearInterval(t);
   }, []);
 
-  const hijriDate = '24 Syaban 1445 H'; // mock
-  const timeString = currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const hijriDate = hijriDateLabel(currentTime);
+  const timeString = currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Makassar' });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-teal-50/40 font-sans">
-      {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-40 bg-white border-b border-emerald-100 shadow-sm">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 sm:px-6 h-16">
-          {/* Logo */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-200">
-              <span className="text-white text-lg sm:text-xl">🕌</span>
-            </div>
-            <div className="hidden sm:block">
-              <h1 className="font-heading font-bold text-lg text-gray-900 leading-tight">
-                Adzan<span className="text-emerald-600">Challenge</span>
-              </h1>
-              <p className="text-[10px] text-gray-400">Dashboard Bocil Masjid</p>
-            </div>
-            <h1 className="sm:hidden font-heading font-bold text-base text-gray-900">
-              Adzan<span className="text-emerald-600">C</span>
-            </h1>
-          </div>
+    <div className="bocil-shell min-h-screen font-sans text-slate-800">
+      {/* Top bar */}
+      <header className="sticky top-0 z-40 bg-white/95 border-b-2 border-sky-100">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 px-4 sm:px-6 h-16">
+          <NavLink to="/" className="flex items-center gap-2.5 min-w-0" aria-label="Beranda Adzan Challenge">
+            <span className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-400 to-mint-400 flex items-center justify-center shadow-toy shrink-0">
+              <span className="text-xl" aria-hidden>🕌</span>
+            </span>
+            <span className="min-w-0">
+              <span className="block font-heading font-extrabold text-lg leading-none text-slate-800">
+                Adzan<span className="text-sky-500">Challenge</span>
+              </span>
+              <span className="block text-[11px] font-bold text-slate-500 truncate">{hijriDate || 'Bocil Masjid'}</span>
+            </span>
+          </NavLink>
 
-          {/* Nav Links */}
-          <nav className="flex items-center gap-1 sm:gap-2">
+          {/* Navigasi desktop/tablet */}
+          <nav className="hidden md:flex items-center gap-1.5" aria-label="Menu utama">
             {bocilNavItems.map(item => (
               <NavLink
                 key={item.name}
                 to={item.href}
                 end={item.href === '/'}
                 className={({ isActive }) => cn(
-                  'flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200',
+                  'flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-extrabold transition-all duration-200',
                   isActive
-                    ? 'bg-emerald-100 text-emerald-700 shadow-sm'
-                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                    ? 'bg-sky-500 text-white shadow-toy-sky'
+                    : 'text-slate-600 hover:bg-sky-50 hover:text-sky-700'
                 )}
               >
-                <span className="text-base sm:text-lg">{item.emoji}</span>
-                <span className="hidden sm:inline">{item.name}</span>
+                <span className="text-lg" aria-hidden>{item.emoji}</span>
+                {item.name}
               </NavLink>
             ))}
           </nav>
 
-          {/* Right side */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-semibold text-gray-900">{hijriDate}</p>
-              <p className="text-[10px] text-emerald-600 font-medium">{timeString}</p>
-            </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="hidden sm:inline-flex items-center gap-1 rounded-xl bg-sun-100 text-sun-700 font-heading font-extrabold px-3 py-1.5 tabular-nums">
+              🕐 {timeString}
+            </span>
             <a
               href="/login"
-              className="text-[10px] sm:text-xs text-gray-400 hover:text-gray-600 transition-colors px-2 py-1 rounded-lg hover:bg-gray-100"
+              className="text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors px-2 py-1 rounded-lg hover:bg-slate-100"
             >
               🔒 Admin
             </a>
@@ -79,21 +73,55 @@ export const BocilLayout: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      {/* Main Content — padding bawah memberi ruang untuk tab bar di HP */}
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-5 sm:pt-8 pb-28 md:pb-10">
         <Outlet />
       </main>
+
+      {/* Tab bar bawah (HP) — tombol besar mudah dijangkau jempol */}
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t-2 border-sky-100 pb-[env(safe-area-inset-bottom)]"
+        aria-label="Menu utama"
+      >
+        <ul className="grid grid-cols-4">
+          {bocilNavItems.map(item => (
+            <li key={item.name}>
+              <NavLink
+                to={item.href}
+                end={item.href === '/'}
+                className={({ isActive }) => cn(
+                  'flex flex-col items-center justify-center gap-0.5 h-16 text-[11px] font-extrabold transition-colors',
+                  isActive ? 'text-sky-600' : 'text-slate-500'
+                )}
+              >
+                {({ isActive }) => (
+                  <>
+                    <span
+                      className={cn(
+                        'text-2xl leading-none w-12 h-8 flex items-center justify-center rounded-full transition-all',
+                        isActive ? 'bg-sky-100 scale-110' : ''
+                      )}
+                      aria-hidden
+                    >
+                      {item.emoji}
+                    </span>
+                    {item.name}
+                  </>
+                )}
+              </NavLink>
+            </li>
+          ))}
+        </ul>
+      </nav>
 
       {/* Toast Notifications */}
       <Toast />
 
       {/* Footer */}
-      <footer className="border-t border-gray-100 bg-white py-4 mt-8">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 text-center">
-          <p className="text-xs text-gray-400">
-            🕌 AdzanChallenge • Semangat beribadah, bocil hebat! 💪
-          </p>
-        </div>
+      <footer className="hidden md:block border-t-2 border-sky-100 bg-white py-4">
+        <p className="max-w-6xl mx-auto px-6 text-center text-xs font-bold text-slate-400">
+          🕌 AdzanChallenge • Semangat beribadah, bocil hebat! 💪
+        </p>
       </footer>
     </div>
   );

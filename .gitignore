@@ -38,3 +38,6 @@ temp/
 # OS
 .DS_Store
 Thumbs.db
+
+# Snapshot data produksi untuk uji migrasi (berisi nama anak) — jangan di-commit
+supabase/tests/*.json

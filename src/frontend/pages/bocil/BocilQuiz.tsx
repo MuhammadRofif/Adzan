@@ -66,8 +66,8 @@ const BocilQuizPlayer: React.FC<{
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const finalAnswers = currentAnswers.map(a => a ?? 0);
-      const res = await submitQuiz(participantId, quiz.id, finalAnswers);
+      // Soal yang belum terjawab dikirim sebagai null (dulu 0 → bisa terhitung benar).
+      const res = await submitQuiz(participantId, quiz.id, currentAnswers);
       setResult(res); 
       setSubmitted(true); 
       onDone(res.score, res.earnedPoints);
@@ -993,7 +993,7 @@ const copyLeaderboardToClipboardAndOpenWA = async (blob: Blob) => {
 
 // ─── Main Bocil Quiz Page ─────────────────────────────────────────────────────
 export const BocilQuiz: React.FC = () => {
-  const { quizzes, quizAttempts, participants, addTransaction } = useApp();
+  const { quizzes, quizAttempts, participants, awardGameWin } = useApp();
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
   const [selectedParticipant, setSelectedParticipant] = useState(() => localStorage.getItem('bocil_id') || '');
   const [playing, setPlaying] = useState(false);
@@ -1589,16 +1589,9 @@ export const BocilQuiz: React.FC = () => {
               const winnerId = caturParticipants[winner].id;
               alert(`Permainan Selesai! Pemenangnya adalah: ${winnerName} 🏆\nSelamat! ${winnerName} mendapatkan +5 Poin!`);
               
-              // Memberikan poin 5 ke pemenang
-              addTransaction({
-                participantId: winnerId,
-                adminId: 'system',
-                type: "adjustment",
-                points: 5,
-                reason: `Menang Battle Royale Catur: ${caturPlayQuiz.title}`
-              });
-              
-              setResultPopup({ score: 100, pts: 5 });
+              // Poin pemenang dicatat di server (dibatasi per hari)
+              const quizId = caturPlayQuiz.id;
+              awardGameWin(winnerId, quizId).then(pts => setResultPopup({ score: 100, pts }));
             } else {
               alert('Permainan Seri! Semuanya imbang. Tidak ada yang mendapat poin.');
             }

@@ -10,7 +10,6 @@ import React, {
 } from "react";
 import {
   Participant,
-  Transaction,
   RedeemHistory,
   QuizAttempt,
   RedeemPackage,
@@ -18,8 +17,6 @@ import {
   ParticipantStatus,
   AttendanceEntry,
   AdzanEntry,
-  TransactionType,
-  getPangkat,
   Season,
   SeasonHistory,
 } from "../../shared/types";
@@ -30,6 +27,8 @@ import {
 import { supabase } from "../services/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────────
+type ActivityKind = "adzan" | "sholawat_iqomah" | "attendance";
+
 interface AppContextType {
   // Participants
   participants: Participant[];
@@ -37,13 +36,13 @@ interface AppContextType {
   updateParticipantStatus: (id: string, status: ParticipantStatus) => void;
   updateParticipantAvatar: (id: string, url: string) => Promise<void>;
   uploadAvatar: (file: File, participantId: string) => Promise<string>;
+  /** Kecilkan foto lama (bisa MB-an) jadi WebP 256px. File asli tidak dihapus. */
+  optimizeAvatars: (onProgress?: (done: number, total: number) => void) => Promise<{ optimized: number; failed: number; savedBytes: number }>;
 
-  // Points
+  // Points (saldo dari server: tabel point_balances)
   points: Record<string, PointValue>;
-
-  // Transactions
-  transactions: Transaction[];
-  addTransaction: (t: Omit<Transaction, "id" | "timestamp">) => void;
+  /** true bila migrasi ledger (001) sudah terpasang di database */
+  ledgerReady: boolean;
 
   // Attendance
   attendanceLog: AttendanceEntry[];
@@ -84,8 +83,9 @@ interface AppContextType {
   submitQuiz: (
     participantId: string,
     quizId: string,
-    answers: number[],
+    answers: (number | null)[],
   ) => Promise<{ score: number; earnedPoints: number }>;
+  awardGameWin: (participantId: string, quizId: string) => Promise<number>;
   addQuiz: (quiz: Omit<Quiz, "id" | "createdAt">) => void;
   updateQuiz: (id: string, quiz: Omit<Quiz, "id" | "createdAt">) => void;
   toggleQuizActive: (quizId: string) => void;
@@ -122,12 +122,14 @@ interface AppContextType {
   endSeason: (nextSeasonName: string) => Promise<{ success: boolean; message: string }>;
 }
 
-type PointValue = {
+export type PointValue = {
   attendance: number;
   attitude: number;
   adzan: number;
   quiz: number;
+  /** saldo season berjalan (sudah dikurangi redeem) */
   total: number;
+  /** poin sepanjang masa: earned season ini + poin akhir season-season lalu */
   grossTotal: number;
   adzanCount: number;
   attendanceCount: number;
@@ -156,6 +158,186 @@ const emptyPointValue = (): PointValue => ({
   sholawatIqomahCount: 0,
 });
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────────
+// localStorage bisa melempar error (mode privat / storage penuh) → selalu dibungkus.
+const cacheGet = <T,>(key: string): T | null => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+};
+const cacheSet = (key: string, value: unknown) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* abaikan */
+  }
+};
+
+const newIdempotencyKey = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+
+/** Tanggal hari ini di zona waktu perangkat, format YYYY-MM-DD. */
+const localToday = () => new Date().toLocaleDateString("en-CA");
+
+const isMissingFunction = (err: { code?: string } | null) =>
+  !!err && (err.code === "PGRST202" || err.code === "42883");
+
+const fetchAll = async <T,>(queryFactory: () => any): Promise<T[]> => {
+  let all: T[] = [];
+  let from = 0;
+  const step = 1000;
+  for (;;) {
+    const { data, error } = await queryFactory().range(from, from + step - 1);
+    if (error || !data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < step) break;
+    from += step;
+  }
+  return all;
+};
+
+// ─── Mappers (baris DB → tipe frontend) ───────────────────────────────────────────
+const mapParticipant = (p: any): Participant => ({
+  id: p.id,
+  nama: p.nama,
+  status: p.status,
+  avatar_url: p.avatar_url,
+  createdAt: new Date(p.created_at),
+  updatedAt: new Date(p.updated_at),
+});
+
+const mapAttendance = (a: any): AttendanceEntry => ({
+  id: a.id,
+  participantId: a.participant_id,
+  participantName: "",
+  prayerTime: a.prayer_time,
+  date: a.date,
+  points: a.points,
+  createdAt: a.created_at ? new Date(a.created_at) : undefined,
+} as AttendanceEntry);
+
+const mapAdzan = (a: any): AdzanEntry => ({
+  id: a.id,
+  participantId: a.participant_id,
+  participantName: "",
+  prayerTime: a.prayer_time,
+  attitude: a.attitude,
+  attitudePoints: a.attitude_points,
+  adzanPoints: a.adzan_points,
+  total: a.total,
+  date: a.date,
+  createdAt: a.created_at ? new Date(a.created_at) : undefined,
+} as AdzanEntry);
+
+const mapRedeem = (r: any): RedeemHistory => ({
+  id: r.id,
+  participantId: r.participant_id,
+  packageId: r.package_id,
+  packageName: r.package_name,
+  pointsSpent: r.points_spent,
+  status: r.status,
+  requestedAt: new Date(r.requested_at),
+  processedAt: r.processed_at ? new Date(r.processed_at) : undefined,
+  processedBy: r.processed_by,
+});
+
+const mapQuiz = (q: any): Quiz => {
+  const rawDesc = q.description || "";
+  const hasEmbedMode = rawDesc.includes("||mode:");
+  const mode = q.mode || (hasEmbedMode ? rawDesc.split("||mode:")[1].trim() : "biasa");
+  const description = hasEmbedMode ? rawDesc.split("||mode:")[0].trim() : rawDesc;
+  return {
+    id: q.id,
+    title: q.title,
+    description,
+    questions: q.questions,
+    createdAt: new Date(q.created_at),
+    isActive: q.is_active,
+    mode: mode as "biasa" | "block_blast",
+  };
+};
+
+const mapQuizAttempt = (qa: any): QuizAttempt => ({
+  id: qa.id,
+  participantId: qa.participant_id,
+  quizId: qa.quiz_id,
+  score: qa.score,
+  earnedPoints: qa.earned_points,
+  answers: [],
+  completedAt: new Date(qa.completed_at),
+});
+
+const mapPackage = (rp: any): RedeemPackage => ({
+  id: rp.id,
+  name: rp.name,
+  description: rp.description,
+  pointsRequired: rp.points_required,
+  diamond: rp.diamond,
+  weeklyQuota: rp.weekly_quota,
+  remainingQuota: rp.weekly_quota,
+  budgetCost: rp.budget_cost,
+  isAvailable: rp.is_available,
+});
+
+const mapSeason = (s: any): Season => ({
+  id: s.id,
+  name: s.name,
+  startDate: new Date(s.start_date),
+  endDate: s.end_date ? new Date(s.end_date) : undefined,
+  createdAt: new Date(s.created_at),
+});
+
+const mapSeasonHistory = (h: any): SeasonHistory => ({
+  id: h.id,
+  seasonId: h.season_id,
+  participantId: h.participant_id,
+  finalPoints: h.final_points,
+  rank: h.rank,
+  badge: h.badge,
+  createdAt: new Date(h.created_at),
+});
+
+const mapPointRow = (b: any): PointValue => ({
+  attendance: b.attendance_points ?? 0,
+  attitude: 0,
+  adzan: b.adzan_points ?? 0,
+  quiz: b.quiz_points ?? 0,
+  total: b.balance ?? 0,
+  grossTotal: b.lifetime_points ?? b.earned ?? 0,
+  adzanCount: b.adzan_count ?? 0,
+  attendanceCount: b.attendance_count ?? 0,
+  quizCount: b.quiz_count ?? 0,
+  sholawatIqomahCount: b.sholawat_iqomah_count ?? 0,
+});
+
+/** Upsert berdasarkan id lalu urutkan — dipakai untuk payload realtime & refresh parsial. */
+const upsertById = <T extends { id: any }>(list: T[], item: T, sortKey: (x: T) => number): T[] => {
+  const next = list.filter((x) => String(x.id) !== String(item.id));
+  next.push(item);
+  return next.sort((a, b) => sortKey(b) - sortKey(a));
+};
+const byDate = (x: { date: string; createdAt?: Date }) =>
+  x.createdAt ? x.createdAt.getTime() : new Date(x.date).getTime();
+
+// Kolom yang benar-benar dipakai UI (hindari select("*") untuk tabel besar).
+const COLS = {
+  adzan: "id,participant_id,prayer_time,attitude,attitude_points,adzan_points,total,date,created_at",
+  attendance: "id,participant_id,prayer_time,date,points,created_at",
+  quizAttempt: "id,participant_id,quiz_id,score,earned_points,completed_at",
+  redeem: "id,participant_id,package_id,package_name,points_spent,status,requested_at,processed_at,processed_by",
+};
+
+const CACHE = {
+  quizzes: "adzan_cache_quizzes_v1",
+  packages: "adzan_cache_packages_v1",
+  points: "adzan_cache_points_v1",
+};
+
 // ─── Context ──────────────────────────────────────────────────────────────────────
 const AppContext = createContext<AppContextType | null>(null);
 
@@ -176,8 +358,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const [schedule, setScheduleState] = useState<Record<string, Record<string, string>>>(() => {
-    const saved = localStorage.getItem('bocil_adzan_schedule');
-    const base = saved ? JSON.parse(saved) : DEFAULT_SCHEDULE;
+    const saved = cacheGet<Record<string, Record<string, string>>>('bocil_adzan_schedule');
+    const base = saved ?? JSON.parse(JSON.stringify(DEFAULT_SCHEDULE));
     // Rotasi shubuh hanya 2 orang (Atha sudah nonaktif)
     const SHUBUH_ROTATION = ["Hafi", "Rega"];
     const DAYS = ["Senin", "Selasa", "Rabu", "Kamis", "Jum'at", "Sabtu", "Minggu"];
@@ -208,44 +390,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       }
     });
     // Simpan hasil migrasi kembali ke localStorage
-    localStorage.setItem('bocil_adzan_schedule', JSON.stringify(base));
+    cacheSet('bocil_adzan_schedule', base);
     return base;
   });
+  const scheduleRowId = useRef<string | null>(null);
 
   const updateSchedule = useCallback((newSchedule: Record<string, Record<string, string>> | ((prev: Record<string, Record<string, string>>) => Record<string, Record<string, string>>)) => {
     setScheduleState(prev => {
       const updated = typeof newSchedule === 'function' ? newSchedule(prev) : newSchedule;
-      localStorage.setItem('bocil_adzan_schedule', JSON.stringify(updated));
-      
-      // Sinkronisasi ke Supabase (Fire-and-forget agar tidak memblokir UI)
-      supabase.from("adzan_schedule").select("id").limit(1).then(({ data, error: fetchErr }) => {
-        if (fetchErr) {
-          console.error("Gagal sinkronisasi jadwal ke Supabase", fetchErr);
-          return;
-        }
-        if (data && data.length > 0) {
-          supabase.from("adzan_schedule").update({ schedule_data: updated, updated_at: new Date() }).eq("id", data[0].id).then();
-        } else {
-          supabase.from("adzan_schedule").insert([{ schedule_data: updated }]).then();
-        }
+      cacheSet('bocil_adzan_schedule', updated);
+
+      // Sinkronisasi ke Supabase (fire-and-forget agar tidak memblokir UI)
+      const rowId = scheduleRowId.current;
+      const req = rowId
+        ? supabase.from("adzan_schedule").update({ schedule_data: updated, updated_at: new Date() }).eq("id", rowId)
+        : supabase.from("adzan_schedule").insert([{ schedule_data: updated }]).select("id").single();
+      Promise.resolve(req).then(({ data, error }: any) => {
+        if (error) console.error("Gagal sinkronisasi jadwal ke Supabase", error);
+        else if (!rowId && data?.id) scheduleRowId.current = data.id;
       });
 
       return updated;
     });
   }, []);
-  const isLoadingDataRef = useRef(false); // mutex: only 1 loadAllData at a time
-  const pendingLoadRef = useRef(false);   // flag: another load requested while busy
+
   const [isLoading, setIsLoading] = useState(true);
+  const [ledgerReady, setLedgerReady] = useState(true);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [points, setPoints] = useState<Record<string, PointValue>>({});
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [points, setPoints] = useState<Record<string, PointValue>>(() => cacheGet(CACHE.points) ?? {});
   const [attendanceLog, setAttendanceLog] = useState<AttendanceEntry[]>([]);
   const [adzanLog, setAdzanLog] = useState<AdzanEntry[]>([]);
-  const [redeemPackages, setRedeemPackages] = useState<RedeemPackage[]>(mockRedeemPackages);
+  const [redeemPackages, setRedeemPackages] = useState<RedeemPackage[]>(
+    () => cacheGet<any[]>(CACHE.packages)?.map(mapPackage) ?? mockRedeemPackages,
+  );
   const [redeemHistory, setRedeemHistory] = useState<RedeemHistory[]>([]);
-  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [quizzes, setQuizzes] = useState<Quiz[]>(() => cacheGet<any[]>(CACHE.quizzes)?.map(mapQuiz) ?? []);
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
-  const [budgetStatus, setBudgetStatus] = useState<BudgetStatus>(mockBudgetStatus);
+  const [budgetStatus] = useState<BudgetStatus>(mockBudgetStatus);
   const [toast, setToast] = useState<{
     show: boolean;
     message: string;
@@ -260,389 +441,338 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   const [allSeasons, setAllSeasons] = useState<Season[]>([]);
   const [seasonHistory, setSeasonHistory] = useState<SeasonHistory[]>([]);
 
-  // ─── Initial Load ───────────────────────────────────────────────────────────
-  const loadAllData = useCallback(async () => {
-    // Mutex: kalau sedang load, tandai pending dan keluar
-    if (isLoadingDataRef.current) {
-      pendingLoadRef.current = true;
+  // Ref agar loader & handler realtime selalu membaca nilai terbaru tanpa re-subscribe.
+  const seasonRef = useRef<Season | null>(null);
+  const ledgerReadyRef = useRef(true);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlight = useRef(new Set<string>());
+
+  const showToast = useCallback(
+    (message: string, type: "success" | "error" | "info" = "success") => {
+      setToast({ show: true, message, type });
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToast((prev) => ({ ...prev, show: false })), 3000);
+    },
+    [],
+  );
+
+  const seasonStartISO = () => {
+    const s = seasonRef.current;
+    return s ? s.startDate.toISOString() : "1970-01-01T00:00:00Z";
+  };
+  const seasonStartDate = () => seasonStartISO().slice(0, 10);
+
+  // ─── Loader per bagian data ────────────────────────────────────────────────
+  const loadSeasons = useCallback(async () => {
+    const [{ data: seasonsData }, { data: hData }] = await Promise.all([
+      supabase.from("seasons").select("*").order("start_date", { ascending: false }),
+      supabase.from("season_history").select("*"),
+    ]);
+    if (seasonsData && seasonsData.length > 0) {
+      const mapped = seasonsData.map(mapSeason);
+      const current = mapped.find((s) => !s.endDate) || mapped[0];
+      seasonRef.current = current;
+      setActiveSeason(current);
+      setAllSeasons(mapped);
+    }
+    if (hData) setSeasonHistory(hData.map(mapSeasonHistory));
+  }, []);
+
+  const loadParticipants = useCallback(async () => {
+    const { data } = await supabase.from("participants").select("*").order("nama").limit(1000);
+    if (data) setParticipants(data.map(mapParticipant));
+  }, []);
+
+  const loadAdzan = useCallback(async () => {
+    const rows = await fetchAll<any>(() =>
+      supabase.from("adzan_log").select(COLS.adzan).gte("date", seasonStartDate()).order("date", { ascending: false }),
+    );
+    setAdzanLog(rows.map(mapAdzan));
+    return rows;
+  }, []);
+
+  const loadAttendance = useCallback(async () => {
+    const rows = await fetchAll<any>(() =>
+      supabase.from("attendance_log").select(COLS.attendance).gte("date", seasonStartDate()).order("date", { ascending: false }),
+    );
+    setAttendanceLog(rows.map(mapAttendance));
+    return rows;
+  }, []);
+
+  const loadQuizAttempts = useCallback(async () => {
+    const rows = await fetchAll<any>(() =>
+      supabase.from("quiz_attempts").select(COLS.quizAttempt).gte("completed_at", seasonStartISO()).order("completed_at", { ascending: false }),
+    );
+    setQuizAttempts(rows.map(mapQuizAttempt));
+    return rows;
+  }, []);
+
+  const loadRedeem = useCallback(async () => {
+    const { data } = await supabase.from("redeem_history").select(COLS.redeem).order("requested_at", { ascending: false }).limit(500);
+    if (data) setRedeemHistory(data.map(mapRedeem));
+    return data ?? [];
+  }, []);
+
+  const loadQuizzes = useCallback(async () => {
+    const { data } = await supabase.from("quizzes").select("*").order("created_at", { ascending: false }).limit(200);
+    if (data) {
+      cacheSet(CACHE.quizzes, data);
+      setQuizzes(data.map(mapQuiz));
+    }
+  }, []);
+
+  const loadPackages = useCallback(async () => {
+    const { data } = await supabase.from("redeem_packages").select("*").order("points_required").limit(100);
+    if (data) {
+      cacheSet(CACHE.packages, data);
+      setRedeemPackages(data.map(mapPackage));
+    }
+  }, []);
+
+  const loadSchedule = useCallback(async () => {
+    const { data, error } = await supabase.from("adzan_schedule").select("*").order("updated_at", { ascending: false }).limit(1);
+    if (!error && data && data.length > 0) {
+      scheduleRowId.current = data[0].id;
+      setScheduleState(data[0].schedule_data);
+      cacheSet("bocil_adzan_schedule", data[0].schedule_data);
+    }
+  }, []);
+
+  /**
+   * Saldo poin. Sumber utama: view `v_participant_points` (saldo tersimpan di server).
+   * Kalau migrasi belum dijalankan, hitung seperti versi lama dari log season aktif.
+   */
+  const loadPoints = useCallback(async (logs?: { adzan: any[]; attendance: any[]; quiz: any[]; redeem: any[] }) => {
+    const { data, error } = await supabase.from("v_participant_points").select("*");
+    if (!error && data) {
+      ledgerReadyRef.current = true;
+      setLedgerReady(true);
+      const map: Record<string, PointValue> = {};
+      data.forEach((row: any) => { map[String(row.participant_id)] = mapPointRow(row); });
+      cacheSet(CACHE.points, map);
+      setPoints(map);
       return;
     }
-    isLoadingDataRef.current = true;
-    pendingLoadRef.current = false;
-    setIsLoading(true);
+
+    // ── Fallback mode lama (sebelum migrasi 001) ──
+    ledgerReadyRef.current = false;
+    setLedgerReady(false);
+    const src = logs ?? {
+      adzan: await fetchAll<any>(() => supabase.from("adzan_log").select(COLS.adzan).gte("date", seasonStartDate())),
+      attendance: await fetchAll<any>(() => supabase.from("attendance_log").select(COLS.attendance).gte("date", seasonStartDate())),
+      quiz: await fetchAll<any>(() => supabase.from("quiz_attempts").select(COLS.quizAttempt).gte("completed_at", seasonStartISO())),
+      redeem: (await supabase.from("redeem_history").select(COLS.redeem).eq("status", "approved")).data ?? [],
+    };
+    const adjustments = await fetchAll<any>(() =>
+      supabase.from("transactions").select("participant_id,points,timestamp").eq("type", "adjustment").gte("timestamp", seasonStartISO()),
+    );
+    const map: Record<string, PointValue> = {};
+    const get = (id: any) => (map[String(id)] ??= emptyPointValue());
+    src.adzan.forEach((a) => {
+      const p = get(a.participant_id);
+      p.adzan += a.total; p.total += a.total; p.grossTotal += a.total;
+      if (a.adzan_points === 8) p.sholawatIqomahCount++; else p.adzanCount++;
+    });
+    src.attendance.forEach((a) => {
+      const p = get(a.participant_id);
+      p.attendance += a.points; p.total += a.points; p.grossTotal += a.points; p.attendanceCount++;
+    });
+    src.quiz.forEach((q) => {
+      const p = get(q.participant_id);
+      p.quiz += q.earned_points || 0; p.total += q.earned_points || 0; p.grossTotal += q.earned_points || 0; p.quizCount++;
+    });
+    adjustments.forEach((t) => {
+      const p = get(t.participant_id);
+      p.total += t.points; if (t.points > 0) p.grossTotal += t.points;
+    });
+    src.redeem
+      .filter((r) => r.status === "approved" && new Date(r.requested_at) >= new Date(seasonStartISO()))
+      .forEach((r) => { get(r.participant_id).total -= r.points_spent; });
+    setPoints(map);
+  }, []);
+
+  // ─── Initial Load ───────────────────────────────────────────────────────────
+  const loadAllData = useCallback(async () => {
     try {
-      // 1. Fetch seasons gracefully (might not exist yet)
-      let currentActiveSeason: Season | null = null;
-      let historyData: SeasonHistory[] = [];
-
-      try {
-        const { data: seasonsData } = await supabase
-          .from("seasons")
-          .select("*")
-          .order("start_date", { ascending: false });
-          
-        if (seasonsData && seasonsData.length > 0) {
-          const mappedSeasons = seasonsData.map((s: any) => ({
-            id: s.id,
-            name: s.name,
-            startDate: new Date(s.start_date),
-            endDate: s.end_date ? new Date(s.end_date) : undefined,
-            createdAt: new Date(s.created_at)
-          }));
-          currentActiveSeason = mappedSeasons.find(s => !s.endDate) || mappedSeasons[0];
-setActiveSeason(currentActiveSeason);
-          setAllSeasons(mappedSeasons);
-
-          const { data: hData } = await supabase.from("season_history").select("*");
-          if (hData) {
-            historyData = hData.map((h: any) => ({
-              id: h.id,
-              seasonId: h.season_id,
-              participantId: h.participant_id,
-              finalPoints: h.final_points,
-              rank: h.rank,
-              badge: h.badge,
-              createdAt: new Date(h.created_at)
-            }));
-            setSeasonHistory(historyData);
-          }
-        }
-      } catch (err) {
-        console.warn("Seasons table might not exist yet.", err);
-      }
-
-      // 2. Prepare the base query for logs based on active season
-      const fetchAll = async (queryFactory: () => any) => {
-        let allData: any[] = [];
-        let from = 0;
-        const step = 1000;
-        while (true) {
-          const { data, error } = await queryFactory().range(from, from + step - 1);
-          if (error || !data || data.length === 0) break;
-          allData = allData.concat(data);
-          if (data.length < step) break;
-          from += step;
-        }
-        return { data: allData };
-      };
-
-      const [
-        { data: pData },
-        { data: attData },
-        { data: adzData },
-        { data: rpData },
-        { data: rhData },
-        { data: qData },
-        { data: qaData },
-        { data: tData }
-      ] = await Promise.all([
-        supabase.from("participants").select("*").order("nama").limit(1000),
-        fetchAll(() => supabase.from("attendance_log").select("*").order("date", { ascending: false })),
-        fetchAll(() => supabase.from("adzan_log").select("*").order("date", { ascending: false })),
-        supabase.from("redeem_packages").select("*").order("points_required").limit(100),
-        fetchAll(() => supabase.from("redeem_history").select("*").order("requested_at", { ascending: false })),
-        supabase.from("quizzes").select("*").order("created_at", { ascending: false }).limit(200),
-        fetchAll(() => supabase.from("quiz_attempts").select("*").order("completed_at", { ascending: false })),
-        fetchAll(() => supabase.from("transactions").select("*").order("timestamp", { ascending: false }))
+      // Tahap 1: season dulu (filter log bergantung pada tanggal mulai season).
+      await loadSeasons();
+      const [, adzan, attendance, quiz, redeem] = await Promise.all([
+        loadParticipants(),
+        loadAdzan(),
+        loadAttendance(),
+        loadQuizAttempts(),
+        loadRedeem(),
+        loadQuizzes(),
+        loadPackages(),
+        loadSchedule(),
       ]);
-
-      // Sinkronisasi jadwal Adzan dari Supabase
-      const { data: schedData, error: schedError } = await supabase.from("adzan_schedule").select("*").limit(1);
-      if (!schedError && schedData && schedData.length > 0) {
-        setScheduleState(schedData[0].schedule_data);
-        localStorage.setItem('bocil_adzan_schedule', JSON.stringify(schedData[0].schedule_data));
-      }
-
-      const mappedParticipants = (pData || []).map((p: any) => ({
-        id: p.id,
-        nama: p.nama,
-        status: p.status,
-        avatar_url: p.avatar_url,
-        createdAt: new Date(p.created_at),
-        updatedAt: new Date(p.updated_at)
-      }));
-
-      const mappedTransactions = (tData || []).map((t: any) => ({
-        id: t.id,
-        participantId: t.participant_id,
-        type: t.type,
-        points: t.points,
-        reason: t.reason,
-        timestamp: new Date(t.timestamp),
-        adminId: t.admin_id
-      }));
-
-      const mappedAttendance = (attData || []).map((a: any) => ({
-        id: a.id,
-        participantId: a.participant_id,
-        participantName: mappedParticipants.find((p: any) => p.id === a.participant_id)?.nama || 'Unknown',
-        prayerTime: a.prayer_time,
-        date: a.date,
-        points: a.points,
-        createdAt: a.created_at ? new Date(a.created_at) : undefined
-      }));
-
-
-      const mappedAdzan = (adzData || []).map((a: any) => ({
-        id: a.id,
-        participantId: a.participant_id,
-        participantName: mappedParticipants.find((p: any) => p.id === a.participant_id)?.nama || 'Unknown',
-        prayerTime: a.prayer_time,
-        attitude: a.attitude,
-        attitudePoints: a.attitude_points,
-        adzanPoints: a.adzan_points,
-        total: a.total,
-        date: a.date,
-        createdAt: a.created_at ? new Date(a.created_at) : undefined
-      }));
-
-      const mappedRedeemHistory = (rhData || []).map((r: any) => ({
-        id: r.id,
-        participantId: r.participant_id,
-        packageId: r.package_id,
-        packageName: r.package_name,
-        pointsSpent: r.points_spent,
-        status: r.status,
-        requestedAt: new Date(r.requested_at),
-        processedAt: r.processed_at ? new Date(r.processed_at) : undefined,
-        processedBy: r.processed_by
-      }));
-
-      const mappedQuizzes = (qData || []).map((q: any) => {
-        const rawDesc = q.description || "";
-        const hasEmbedMode = rawDesc.includes("||mode:");
-        const mode = q.mode || (hasEmbedMode ? rawDesc.split("||mode:")[1].trim() : 'biasa');
-        const description = hasEmbedMode ? rawDesc.split("||mode:")[0].trim() : rawDesc;
-        return {
-          id: q.id,
-          title: q.title,
-          description: description,
-          questions: q.questions,
-          createdAt: new Date(q.created_at),
-          isActive: q.is_active,
-          mode: mode as 'biasa' | 'block_blast'
-        };
-      });
-
-      const mappedQuizAttempts = (qaData || []).map((qa: any) => ({
-        id: qa.id,
-        participantId: qa.participant_id,
-        quizId: qa.quiz_id,
-        score: qa.score,
-        earnedPoints: qa.earned_points,
-        answers: qa.answers,
-        completedAt: new Date(qa.completed_at)
-      }));
-
-
-      setParticipants(mappedParticipants);
-      setTransactions(mappedTransactions);
-      setAttendanceLog(mappedAttendance);
-      setAdzanLog(mappedAdzan);
-      setRedeemHistory(mappedRedeemHistory);
-      setQuizzes(mappedQuizzes);
-      setQuizAttempts(mappedQuizAttempts);
-
-      if (rpData) {
-        setRedeemPackages(rpData.map((rp: any) => ({
-          id: rp.id,
-          name: rp.name,
-          description: rp.description,
-          pointsRequired: rp.points_required,
-          diamond: rp.diamond,
-          weeklyQuota: rp.weekly_quota,
-          remainingQuota: rp.weekly_quota, // Simplified
-          budgetCost: rp.budget_cost,
-          isAvailable: rp.is_available
-        })));
-      }
-
-      // ─── Kalkulasi Ulang Poin dari Tabel Sumber (bukan dari transactions) ───
-      // Ini menghindari duplikat/error akibat bug lama di tabel transactions.
-      const pointMap: Record<string, PointValue> = {};
-      mappedParticipants.forEach((p: any) => { pointMap[p.id] = emptyPointValue(); });
-
-      // Helper: apakah tanggal masuk dalam season AKTIF (untuk hitung saldo/total saat ini)
-      const isInActiveSeason = (dateStr: string | Date | undefined) => {
-        if (!currentActiveSeason) return true;
-        if (!dateStr) return false;
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return false;
-        if (d < currentActiveSeason.startDate) return false;
-        if (currentActiveSeason.endDate && d > currentActiveSeason.endDate) return false;
-        return true;
-      };
-
-      // ── PASS 1: Hitung TOTAL SALDO (hanya season aktif) ──────────────────────
-
-      // Adzan
-      mappedAdzan.forEach((a: any) => {
-        if (!isInActiveSeason(a.date)) return;
-        const key = String(a.participantId);
-        if (!pointMap[key]) pointMap[key] = emptyPointValue();
-        pointMap[key].adzan += a.total;
-        pointMap[key].total += a.total;
-        if (a.adzanPoints === 8) pointMap[key].sholawatIqomahCount++;
-        else pointMap[key].adzanCount++;
-      });
-
-      // Attendance
-      mappedAttendance.forEach((a: any) => {
-        if (!isInActiveSeason(a.date)) return;
-        const key = String(a.participantId);
-        if (!pointMap[key]) pointMap[key] = emptyPointValue();
-        pointMap[key].attendance += a.points;
-        pointMap[key].total += a.points;
-        pointMap[key].attendanceCount++;
-      });
-
-      // Quiz attempts (count)
-      mappedQuizAttempts.forEach((qa: any) => {
-        if (!isInActiveSeason(qa.completedAt)) return;
-        const key = String(qa.participantId);
-        if (!pointMap[key]) pointMap[key] = emptyPointValue();
-        pointMap[key].quiz += qa.earnedPoints || 0;
-        pointMap[key].total += qa.earnedPoints || 0;
-        pointMap[key].quizCount++;
-      });
-
-      // Transactions (adjustment tambah ke saldo, redeem kurangi saldo)
-      mappedTransactions.forEach((t: any) => {
-        if (!isInActiveSeason(t.timestamp)) return;
-        const key = String(t.participantId);
-        if (!pointMap[key]) pointMap[key] = emptyPointValue();
-        if (t.type === 'adjustment') {
-          pointMap[key].total += t.points;
-        }
-      });
-
-      // Redeem kurangi saldo
-      mappedRedeemHistory.forEach((r: any) => {
-        if (!isInActiveSeason(r.requestedAt)) return;
-        if (r.status === 'approved') {
-          const key = String(r.participantId);
-          if (!pointMap[key]) pointMap[key] = emptyPointValue();
-          pointMap[key].total -= r.pointsSpent;
-        }
-      });
-
-      // ── PASS 2: Hitung GROSS TOTAL (SEMUA WAKTU, tidak difilter season) ──────
-      // grossTotal = poin kotor sepanjang masa: adzan + hadir + quiz + bonus
-      // Dihitung dari raw logs agar akurat dan tidak bergantung pada transactions
-      mappedAdzan.forEach((a: any) => {
-        const key = String(a.participantId);
-        if (!pointMap[key]) pointMap[key] = emptyPointValue();
-        pointMap[key].grossTotal += a.total;
-      });
-
-      mappedAttendance.forEach((a: any) => {
-        const key = String(a.participantId);
-        if (!pointMap[key]) pointMap[key] = emptyPointValue();
-        pointMap[key].grossTotal += a.points;
-      });
-
-      // Quiz: gunakan transactions type='quiz' karena lebih lengkap dari quiz_attempts
-      mappedTransactions.forEach((t: any) => {
-        const key = String(t.participantId);
-        if (!pointMap[key]) pointMap[key] = emptyPointValue();
-        if (t.type === 'quiz' && t.points > 0) {
-          pointMap[key].grossTotal += t.points;
-        }
-        if (t.type === 'adjustment' && t.points > 0) {
-          pointMap[key].grossTotal += t.points;
-        }
-      });
-
-      setPoints(pointMap);
-
-
-
+      await loadPoints({ adzan, attendance, quiz, redeem });
     } catch (error) {
       console.error("Error loading data from Supabase:", error);
     } finally {
       setIsLoading(false);
-      isLoadingDataRef.current = false;
-      // Kalau ada yang antri saat kita sibuk, langsung jalankan sekarang
-      if (pendingLoadRef.current) {
-        pendingLoadRef.current = false;
-        loadAllData();
-      }
     }
-  }, []);
+  }, [loadSeasons, loadParticipants, loadAdzan, loadAttendance, loadQuizAttempts, loadRedeem, loadQuizzes, loadPackages, loadSchedule, loadPoints]);
 
   useEffect(() => {
     loadAllData();
   }, [loadAllData]);
 
-  // ─── Realtime Subscriptions ────────────────────────────────────────────────
+  // ─── Realtime ──────────────────────────────────────────────────────────────
+  // Sebelumnya: SEMUA perubahan di skema public → reload SEMUA tabel di SEMUA
+  // browser (~360 KB per event per pengunjung). Sekarang: INSERT diterapkan
+  // langsung dari payload; perubahan lain me-reload tabel itu saja.
   useEffect(() => {
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const timers: Record<string, ReturnType<typeof setTimeout>> = {};
+    let staleWhileHidden = false;
 
-    const channel = supabase
-      .channel("db-changes")
-      .on("postgres_changes", { event: "*", schema: "public" }, () => {
-        // Debounce: tunggu 300ms setelah event terakhir baru load
-        // Ini mencegah banyak loadAllData() serentak saat 1 aksi tulis ke beberapa tabel
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          loadAllData();
-        }, 300);
-      })
-      .subscribe();
-
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      supabase.removeChannel(channel);
+    const debounced = (key: string, fn: () => void, ms = 800) => {
+      if (timers[key]) clearTimeout(timers[key]);
+      timers[key] = setTimeout(fn, ms);
     };
-  }, [loadAllData]);
 
-  const showToast = useCallback(
-    (message: string, type: "success" | "error" | "info" = "success") => {
-      setToast({ show: true, message, type });
-      setTimeout(() => setToast((prev) => ({ ...prev, show: false })), 3000);
-    },
-    [],
-  );
-
-  const addTransaction = useCallback(
-    async (t: Omit<Transaction, "id" | "timestamp">) => {
-      // Check rank before transaction
-      const currentTotal = points[t.participantId]?.total || 0;
-      const oldRank = getPangkat(currentTotal).current;
-
-      const { error } = await supabase.from("transactions").insert([
-        { 
-          participant_id: t.participantId,
-          type: t.type,
-          points: t.points,
-          reason: t.reason,
-          admin_id: t.adminId
-        }
-      ]);
-      
-      if (error) {
-        console.error("Error adding transaction:", error);
+    const handle = (table: string, payload: any) => {
+      if (document.visibilityState === "hidden") {
+        staleWhileHidden = true;
         return;
       }
-
-      // Check for rank up and add bonus
-      if (t.points > 0 && t.type !== 'adjustment' && t.type !== 'redeem') {
-        const newTotal = currentTotal + t.points;
-        const newRank = getPangkat(newTotal).current;
-        
-        if (newRank.min > oldRank.min && newRank.bonus && newRank.bonus > 0) {
-          await supabase.from("transactions").insert([{
-            participant_id: t.participantId,
-            type: "adjustment",
-            points: newRank.bonus,
-            reason: `Bonus Naik Pangkat: ${newRank.title} ${newRank.emoji}`,
-            admin_id: "system"
-          }]);
-          showToast(`🌟 Naik Pangkat ke ${newRank.title}! Bonus +${newRank.bonus} Poin!`);
-        }
+      const row = payload.new;
+      const isInsert = payload.eventType === "INSERT" && row;
+      switch (table) {
+        case "point_balances":
+          if (row && seasonRef.current && String(row.season_id) === String(seasonRef.current.id)) {
+            // Baris saldo tidak membawa lifetime_points → ambil view lagi (kecil, ±25 baris).
+            debounced("points", () => loadPoints());
+          }
+          break;
+        case "adzan_log":
+          if (isInsert) setAdzanLog((l) => upsertById(l, mapAdzan(row), byDate));
+          else debounced(table, loadAdzan);
+          if (!ledgerReadyRef.current) debounced("points", () => loadPoints());
+          break;
+        case "attendance_log":
+          if (isInsert) setAttendanceLog((l) => upsertById(l, mapAttendance(row), byDate));
+          else debounced(table, loadAttendance);
+          if (!ledgerReadyRef.current) debounced("points", () => loadPoints());
+          break;
+        case "quiz_attempts":
+          if (isInsert) setQuizAttempts((l) => upsertById(l, mapQuizAttempt(row), (x) => x.completedAt.getTime()));
+          else debounced(table, loadQuizAttempts);
+          if (!ledgerReadyRef.current) debounced("points", () => loadPoints());
+          break;
+        case "redeem_history":
+          if (row && payload.eventType !== "DELETE") setRedeemHistory((l) => upsertById(l, mapRedeem(row), (x) => x.requestedAt.getTime()));
+          else debounced(table, loadRedeem);
+          break;
+        case "participants":
+          debounced(table, loadParticipants);
+          break;
+        case "quizzes":
+          debounced(table, loadQuizzes);
+          break;
+        case "redeem_packages":
+          debounced(table, loadPackages);
+          break;
+        case "adzan_schedule":
+          debounced(table, loadSchedule);
+          break;
+        case "seasons":
+        case "season_history":
+          debounced("seasons", loadAllData, 1500);
+          break;
       }
+    };
+
+    const tables = [
+      "point_balances", "adzan_log", "attendance_log", "quiz_attempts", "redeem_history",
+      "participants", "quizzes", "redeem_packages", "adzan_schedule", "seasons", "season_history",
+    ];
+    let channel = supabase.channel("app-changes");
+    tables.forEach((table) => {
+      channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => handle(table, payload));
+    });
+    channel.subscribe();
+
+    // Tab tidak terlihat → abaikan event; saat kembali terlihat, segarkan sekali.
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && staleWhileHidden) {
+        staleWhileHidden = false;
+        loadAllData();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      Object.values(timers).forEach(clearTimeout);
+      document.removeEventListener("visibilitychange", onVisible);
+      supabase.removeChannel(channel);
+    };
+  }, [loadAllData, loadPoints, loadAdzan, loadAttendance, loadQuizAttempts, loadRedeem, loadParticipants, loadQuizzes, loadPackages, loadSchedule]);
+
+  // ─── Mutasi ────────────────────────────────────────────────────────────────
+  /** Jalankan aksi sekali saja per tanda tangan (cegah klik ganda). */
+  const once = useCallback(async <T,>(signature: string, fn: () => Promise<T>): Promise<T | undefined> => {
+    if (inFlight.current.has(signature)) return undefined;
+    inFlight.current.add(signature);
+    try {
+      return await fn();
+    } finally {
+      inFlight.current.delete(signature);
+    }
+  }, []);
+
+  const rpcError = useCallback((error: any, fallback: string) => {
+    console.error(fallback, error);
+    if (isMissingFunction(error)) {
+      showToast("Database belum diperbarui. Jalankan migrasi 001 di Supabase.", "error");
+    } else if (error?.code === "42501") {
+      showToast("Sesi admin habis / tidak berhak. Silakan login ulang.", "error");
+    } else {
+      showToast(error?.message ? `${fallback}: ${error.message}` : fallback, "error");
+    }
+  }, [showToast]);
+
+  const recordActivity = useCallback(
+    async (kind: ActivityKind, participantId: string | number, prayerTime: string, attitude: string, customDate?: string) => {
+      const participant = participants.find((p) => String(p.id) === String(participantId));
+      if (!participant) return;
+      const date = customDate || localToday();
+      const signature = `activity:${kind}:${participantId}:${prayerTime}:${date}`;
+      await once(signature, async () => {
+        const { data, error } = await supabase.rpc("record_activity", {
+          p_participant_id: Number(participantId),
+          p_kind: kind,
+          p_prayer_time: prayerTime || "",
+          p_attitude: attitude,
+          p_date: date,
+          p_idempotency_key: newIdempotencyKey(),
+        });
+        if (error) {
+          rpcError(error, "Gagal mencatat aktivitas");
+          return;
+        }
+        const label = kind === "adzan" ? "Adzan" : kind === "sholawat_iqomah" ? "Sholawat + Iqomah" : "Latihan";
+        showToast(`${label} ${participant.nama} berhasil dicatat (+${data?.points ?? 0} poin).`);
+        await Promise.all([kind === "attendance" ? loadAttendance() : loadAdzan(), loadPoints()]);
+      });
     },
-    [points, showToast],
+    [participants, once, rpcError, showToast, loadAdzan, loadAttendance, loadPoints],
+  );
+
+  const recordAttendance = useCallback(
+    (participantId: string, prayerTime: string, attitude: string = "Bagus", customDate?: string) =>
+      void recordActivity("attendance", participantId, prayerTime, attitude, customDate),
+    [recordActivity],
+  );
+  const recordAdzan = useCallback(
+    (participantId: string, prayerTime: string, attitude: string, customDate?: string) =>
+      void recordActivity("adzan", participantId, prayerTime, attitude, customDate),
+    [recordActivity],
+  );
+  const recordSholawatIqomah = useCallback(
+    (participantId: string, prayerTime: string, attitude: string, customDate?: string) =>
+      void recordActivity("sholawat_iqomah", participantId, prayerTime, attitude, customDate),
+    [recordActivity],
   );
 
   const addParticipant = useCallback(
@@ -653,9 +783,10 @@ setActiveSeason(currentActiveSeason);
         return;
       }
       showToast(`Peserta "${nama}" berhasil ditambahkan.`);
-      loadAllData();
+      loadParticipants();
+      loadPoints();
     },
-    [showToast, loadAllData],
+    [showToast, loadParticipants, loadPoints],
   );
 
   const updateParticipantStatus = useCallback(
@@ -666,253 +797,103 @@ setActiveSeason(currentActiveSeason);
         return;
       }
       showToast("Status peserta berhasil diperbarui.");
-      loadAllData();
+      loadParticipants();
     },
-    [showToast, loadAllData],
-  );
-
-  const recordAttendance = useCallback(
-    async (participantId: string | number, prayerTime: string, attitude: string = "Bagus", customDate?: string) => {
-      const participant = participants.find((p) => String(p.id) === String(participantId));
-      if (!participant) return;
-
-      const attitudePointsMap: Record<string, number> = {
-        Bagus: 5,
-        "Cukup Bagus": 3,
-        Ribut: 1,
-      };
-      const pointsToAdd = attitudePointsMap[attitude] ?? 5;
-
-      const { error } = await supabase.from("attendance_log").insert([{
-        participant_id: participantId,
-        prayer_time: prayerTime,
-        points: pointsToAdd,
-        date: customDate || new Date().toISOString().split("T")[0]
-      }]);
-
-      if (error) {
-        showToast("Gagal mencatat latihan", "error");
-        return;
-      }
-
-      const reason = `Latihan${prayerTime ? ` ${prayerTime}` : ""} - Sikap: ${attitude}`;
-      await addTransaction({
-        participantId: String(participantId),
-        type: "attendance",
-        points: pointsToAdd,
-        reason,
-        adminId: "admin",
-      });
-      showToast(`Latihan ${participant.nama} berhasil dicatat (+${pointsToAdd} poin).`);
-      loadAllData();
-    },
-    [participants, addTransaction, showToast, loadAllData],
-  );
-
-  const recordAdzan = useCallback(
-    async (participantId: string | number, prayerTime: string, attitude: string, customDate?: string) => {
-      const participant = participants.find((p) => String(p.id) === String(participantId));
-      if (!participant) return;
-      
-      const totalPoints = 10;
-      const { error } = await supabase.from("adzan_log").insert([{
-        participant_id: participantId,
-        prayer_time: prayerTime,
-        attitude: attitude,
-        attitude_points: 0,
-        adzan_points: 10,
-        total: totalPoints,
-        date: customDate || new Date().toISOString().split("T")[0]
-      }]);
-
-      if (error) {
-        showToast("Gagal mencatat adzan", "error");
-        return;
-      }
-
-      const reason = `Adzan${prayerTime ? ` ${prayerTime}` : ""} - Sikap: ${attitude}`;
-      await addTransaction({
-        participantId: String(participantId),
-        type: "adzan",
-        points: totalPoints,
-        reason,
-        adminId: "admin",
-      });
-      showToast(`Adzan ${participant.nama} berhasil dicatat (+10 poin).`);
-      loadAllData();
-    },
-    [participants, addTransaction, showToast, loadAllData],
-  );
-
-  const recordSholawatIqomah = useCallback(
-    async (participantId: string | number, prayerTime: string, attitude: string, customDate?: string) => {
-      const participant = participants.find((p) => String(p.id) === String(participantId));
-      if (!participant) return;
-      
-      const totalPoints = 8;
-      const { error } = await supabase.from("adzan_log").insert([{
-        participant_id: participantId,
-        prayer_time: prayerTime,
-        attitude: attitude,
-        attitude_points: 0,
-        adzan_points: 8,
-        total: totalPoints,
-        date: customDate || new Date().toISOString().split("T")[0]
-      }]);
-
-      if (error) {
-        showToast("Gagal mencatat sholawat + iqomah", "error");
-        return;
-      }
-
-      const reason = `Sholawat + Iqomah${prayerTime ? ` ${prayerTime}` : ""} - Sikap: ${attitude}`;
-      await addTransaction({
-        participantId: String(participantId),
-        type: "adzan",
-        points: totalPoints,
-        reason,
-        adminId: "admin",
-      });
-      showToast(`Sholawat + Iqomah ${participant.nama} berhasil dicatat (+8 poin).`);
-      loadAllData();
-    },
-    [participants, addTransaction, showToast, loadAllData],
+    [showToast, loadParticipants],
   );
 
   const requestRedeem = useCallback(
     async (participantId: string | number, packageId: string | number) => {
       const pkg = redeemPackages.find((p) => String(p.id) === String(packageId));
-      const participant = participants.find((p) => String(p.id) === String(participantId));
-      if (!pkg || !participant)
-        return { success: false, message: "Data tidak ditemukan." };
-      
-      const participantPoints = points[String(participantId)]?.total ?? 0;
-      if (participantPoints < pkg.pointsRequired)
-        return { success: false, message: "Poin tidak mencukupi." };
-      
-      // Weekly quota check removed by admin request
-      
-      // Budget check removed by admin request
+      if (!pkg) return { success: false, message: "Data tidak ditemukan." };
 
-      const { error } = await supabase.from("redeem_history").insert([{
-        participant_id: participantId,
-        package_id: packageId,
-        package_name: pkg.name,
-        points_spent: pkg.pointsRequired,
-        status: "pending"
-      }]);
-
-      if (error) return { success: false, message: "Gagal mengirim permintaan redeem." };
-
-      showToast(`Permintaan redeem "${pkg.name}" berhasil dikirim!`);
-      await loadAllData();
-      return { success: true, message: "Permintaan redeem berhasil dikirim." };
+      const result = await once(`redeem:${participantId}:${packageId}`, async () => {
+        const { data, error } = await supabase.rpc("request_redeem", {
+          p_participant_id: Number(participantId),
+          p_package_id: Number(packageId),
+        });
+        if (error) {
+          rpcError(error, "Gagal mengirim permintaan redeem");
+          return { success: false, message: "Gagal mengirim permintaan redeem." };
+        }
+        if (!data?.ok) return { success: false, message: data?.message || "Permintaan ditolak." };
+        showToast(`Permintaan redeem "${pkg.name}" berhasil dikirim!`);
+        await loadRedeem();
+        return { success: true, message: "Permintaan redeem berhasil dikirim." };
+      });
+      return result ?? { success: false, message: "Permintaan sedang diproses..." };
     },
-    [redeemPackages, participants, points, redeemHistory, budgetStatus, showToast, loadAllData],
+    [redeemPackages, once, rpcError, showToast, loadRedeem],
   );
 
   const processRedeem = useCallback(
     async (redeemId: string | number, action: "approved" | "rejected") => {
-      const r = redeemHistory.find(item => String(item.id) === String(redeemId));
-      if (!r || r.status !== 'pending') return;
-
-      const { error } = await supabase.from("redeem_history").update({
-        status: action,
-        processed_at: new Date(),
-        processed_by: "admin"
-      }).eq("id", redeemId);
-
-      if (error) {
-        showToast("Gagal memproses redeem", "error");
-        return;
-      }
-
-      if (action === "approved") {
-        await addTransaction({
-          participantId: String(r.participantId),
-          type: "redeem",
-          points: -r.pointsSpent,
-          reason: `Redeem: ${r.packageName}`,
-          adminId: "admin",
-        });
-      }
-
-      showToast(`Permintaan redeem berhasil ${action === "approved" ? "disetujui" : "ditolak"}.`);
-      await loadAllData();
+      await once(`process-redeem:${redeemId}`, async () => {
+        const { data, error } = await supabase.rpc("process_redeem", { p_redeem_id: Number(redeemId), p_action: action });
+        if (error) {
+          rpcError(error, "Gagal memproses redeem");
+          return;
+        }
+        if (data && data.ok === false) {
+          showToast(data.message || "Redeem tidak bisa diproses", "error");
+          return;
+        }
+        showToast(`Permintaan redeem berhasil ${action === "approved" ? "disetujui" : "ditolak"}.`);
+        await Promise.all([loadRedeem(), loadPoints()]);
+      });
     },
-    [redeemHistory, addTransaction, showToast, loadAllData],
+    [once, rpcError, showToast, loadRedeem, loadPoints],
   );
 
   const submitQuiz = useCallback(
-    async (participantId: string | number, quizId: string | number, answers: number[]) => {
+    async (participantId: string | number, quizId: string | number, answers: (number | null)[]) => {
       const quiz = quizzes.find((q) => String(q.id) === String(quizId));
       if (!quiz) return { score: 0, earnedPoints: 0 };
-      
-      let correct = 0;
-      answers.forEach((ans, i) => {
-        if (quiz.questions[i]?.correctAnswer === ans) correct++;
+
+      const { data, error } = await supabase.rpc("submit_quiz", {
+        p_participant_id: Number(participantId),
+        p_quiz_id: Number(quizId),
+        p_answers: answers.map((a) => (a === undefined ? null : a)),
+        p_idempotency_key: newIdempotencyKey(),
       });
-      const score = Math.round((correct / quiz.questions.length) * 100);
-      const earnedPoints = correct;
-
-      // Use local date for "today" to avoid UTC rollover issues
-      const today = new Date().toLocaleDateString('en-CA');
-      
-      // Logic: Only give points if this attempt has MORE correct answers than the best attempt today.
-      // This prevents poin berkurang (decreasing points) when retaking a quiz.
-      const todayAttempts = quizAttempts.filter(
-        (a) =>
-          String(a.participantId) === String(participantId) &&
-          String(a.quizId) === String(quizId) &&
-          new Date(a.completedAt).toLocaleDateString('en-CA') === today
-      );
-
-      // Total poin yang sudah diberikan hari ini untuk kuis ini
-      const pointsEarnedToday = todayAttempts
-        .reduce((sum, a) => sum + (a.earnedPoints || 0), 0);
-
-      // Hanya tambah poin jika hasil baru lebih baik dari yang sudah diperoleh hari ini
-      // Ini mencegah poin berkurang saat kuis diulang dengan hasil lebih rendah
-      const finalEarnedPoints = Math.max(0, earnedPoints - pointsEarnedToday);
-
-      const { error } = await supabase.from("quiz_attempts").insert([{
-        participant_id: participantId,
-        quiz_id: quizId,
-        score,
-        earned_points: finalEarnedPoints,
-        answers,
-        completed_at: new Date()
-      }]);
-
       if (error) {
-        showToast("Gagal menyimpan hasil quiz", "error");
-        return { score, earnedPoints: 0 };
+        rpcError(error, "Gagal menyimpan hasil quiz");
+        return { score: 0, earnedPoints: 0 };
       }
 
-      if (finalEarnedPoints > 0) {
-        await addTransaction({
-          participantId: String(participantId),
-          type: "quiz",
-          points: finalEarnedPoints,
-          reason: `Quiz: ${quiz.title} - Skor: ${score}%`,
-          adminId: "system",
-        });
-        showToast(`Quiz selesai! Skor: ${score}% (+${finalEarnedPoints} poin)`);
-      } else if (todayAttempts.length > 0) {
-        // Sudah pernah mengerjakan hari ini
-        if (pointsEarnedToday >= quiz.questions.length) {
-          showToast("Kamu sudah mendapatkan poin maksimal untuk kuis ini hari ini! 🏆", "info");
-        } else if (earnedPoints > 0) {
-          showToast(`Quiz selesai! Skor: ${score}% (Tidak ada poin tambahan, hasil tidak lebih baik dari sebelumnya)`, "info");
-        } else {
-          showToast(`Quiz selesai! Skor: ${score}% (Tidak ada jawaban benar)`, "info");
-        }
+      const score: number = data?.score ?? 0;
+      const earned: number = data?.points ?? 0;
+      if (earned > 0) {
+        showToast(`Quiz selesai! Skor: ${score}% (+${earned} poin)`);
+      } else if ((data?.earned_today ?? 0) >= (data?.max ?? Infinity)) {
+        showToast("Kamu sudah mendapatkan poin maksimal untuk kuis ini hari ini! 🏆", "info");
+      } else if ((data?.correct ?? 0) > 0) {
+        showToast(`Quiz selesai! Skor: ${score}% (Tidak ada poin tambahan, hasil tidak lebih baik dari sebelumnya)`, "info");
+      } else {
+        showToast(`Quiz selesai! Skor: ${score}% (Tidak ada jawaban benar)`, "info");
       }
-
-      await loadAllData();
-      return { score, earnedPoints: finalEarnedPoints };
+      await Promise.all([loadQuizAttempts(), loadPoints()]);
+      return { score, earnedPoints: earned };
     },
-    [quizzes, quizAttempts, addTransaction, showToast, loadAllData],
+    [quizzes, rpcError, showToast, loadQuizAttempts, loadPoints],
+  );
+
+  const awardGameWin = useCallback(
+    async (participantId: string | number, quizId: string | number) => {
+      const { data, error } = await supabase.rpc("award_game_win", {
+        p_participant_id: Number(participantId),
+        p_quiz_id: Number(quizId),
+        p_idempotency_key: newIdempotencyKey(),
+      });
+      if (error) {
+        rpcError(error, "Gagal menyimpan poin catur");
+        return 0;
+      }
+      if (data && data.ok === false) showToast(data.message, "info");
+      await loadPoints();
+      return (data?.points as number) ?? 0;
+    },
+    [rpcError, showToast, loadPoints],
   );
 
   const addQuiz = useCallback(
@@ -925,7 +906,7 @@ setActiveSeason(currentActiveSeason);
         is_active: quiz.isActive,
         mode: finalMode
       }]);
-      
+
       if (error) {
         // Fallback: store mode in description
         const fallbackDescription = `${quiz.description} ||mode:${finalMode}`;
@@ -935,19 +916,19 @@ setActiveSeason(currentActiveSeason);
           questions: quiz.questions,
           is_active: quiz.isActive
         }]);
-        
+
         if (fallbackError) {
           showToast("Gagal menambah kuis", "error");
         } else {
           showToast(`Kuis "${quiz.title}" berhasil ditambahkan.`);
-          loadAllData();
+          loadQuizzes();
         }
       } else {
         showToast(`Kuis "${quiz.title}" berhasil ditambahkan.`);
-        loadAllData();
+        loadQuizzes();
       }
     },
-    [showToast, loadAllData],
+    [showToast, loadQuizzes],
   );
 
   const updateQuiz = useCallback(
@@ -960,7 +941,7 @@ setActiveSeason(currentActiveSeason);
         is_active: quiz.isActive,
         mode: finalMode
       }).eq("id", id);
-      
+
       if (error) {
         // Fallback: store mode in description
         const fallbackDescription = `${quiz.description} ||mode:${finalMode}`;
@@ -970,27 +951,27 @@ setActiveSeason(currentActiveSeason);
           questions: quiz.questions,
           is_active: quiz.isActive
         }).eq("id", id);
-        
+
         if (fallbackError) {
           showToast("Gagal memperbarui kuis", "error");
         } else {
           showToast(`Kuis "${quiz.title}" berhasil diperbarui.`);
-          loadAllData();
+          loadQuizzes();
         }
       } else {
         showToast(`Kuis "${quiz.title}" berhasil diperbarui.`);
-        loadAllData();
+        loadQuizzes();
       }
     },
-    [showToast, loadAllData],
+    [showToast, loadQuizzes],
   );
 
   const toggleQuizActive = useCallback(async (quizId: string | number) => {
     const q = quizzes.find(item => String(item.id) === String(quizId));
     if (!q) return;
     const { error } = await supabase.from("quizzes").update({ is_active: !q.isActive }).eq("id", quizId);
-    if (!error) loadAllData();
-  }, [quizzes, loadAllData]);
+    if (!error) loadQuizzes();
+  }, [quizzes, loadQuizzes]);
 
   const deleteQuiz = useCallback(
     async (quizId: string | number) => {
@@ -998,34 +979,61 @@ setActiveSeason(currentActiveSeason);
       if (error) showToast("Gagal menghapus quiz", "error");
       else {
         showToast("Quiz berhasil dihapus.", "info");
-        loadAllData();
+        loadQuizzes();
       }
     },
-    [showToast, loadAllData],
+    [showToast, loadQuizzes],
   );
 
+  /**
+   * Foto diperkecil ke 256px WebP sebelum diunggah (±10–30 KB, sebelumnya foto
+   * kamera bisa beberapa MB) dan disimpan dengan nama tetap per anak, sehingga
+   * unggah ulang menimpa file lama alih-alih menumpuk di Storage.
+   */
   const uploadAvatar = useCallback(async (file: File, participantId: string) => {
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${participantId}-${Math.random()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      const blob = await resizeImage(file, 256);
+      const filePath = `avatars/${participantId}.webp`;
 
       const { error: uploadError } = await supabase.storage
         .from('media')
-        .upload(filePath, file);
+        .upload(filePath, blob, { upsert: true, contentType: 'image/webp', cacheControl: '604800' });
 
       if (uploadError) throw uploadError;
 
-      const { data } = supabase.storage
-        .from('media')
-        .getPublicUrl(filePath);
-
-      return data.publicUrl;
+      const { data } = supabase.storage.from('media').getPublicUrl(filePath);
+      return `${data.publicUrl}?v=${Date.now()}`;
     } catch (error) {
       showToast("Gagal mengupload foto", "error");
       throw error;
     }
   }, [showToast]);
+
+  const optimizeAvatars = useCallback(async (onProgress?: (done: number, total: number) => void) => {
+    const targets = participants.filter((p) => p.avatar_url && !p.avatar_url.split("?")[0].endsWith(".webp"));
+    let optimized = 0, failed = 0, savedBytes = 0;
+    for (const [i, p] of targets.entries()) {
+      try {
+        const original = await (await fetch(p.avatar_url as string)).blob();
+        const small = await resizeImage(original, 256);
+        const filePath = `avatars/${p.id}.webp`;
+        const { error: upErr } = await supabase.storage.from("media")
+          .upload(filePath, small, { upsert: true, contentType: "image/webp", cacheControl: "604800" });
+        if (upErr) throw upErr;
+        const url = `${supabase.storage.from("media").getPublicUrl(filePath).data.publicUrl}?v=${Date.now()}`;
+        const { error: dbErr } = await supabase.from("participants").update({ avatar_url: url }).eq("id", p.id);
+        if (dbErr) throw dbErr;
+        optimized++;
+        savedBytes += Math.max(0, original.size - small.size);
+      } catch (err) {
+        console.error("Gagal mengoptimalkan foto", p.nama, err);
+        failed++;
+      }
+      onProgress?.(i + 1, targets.length);
+    }
+    await loadParticipants();
+    return { optimized, failed, savedBytes };
+  }, [participants, loadParticipants]);
 
   const updateParticipantAvatar = useCallback(async (id: string, url: string) => {
     const { error } = await supabase.from("participants").update({ avatar_url: url }).eq("id", id);
@@ -1033,21 +1041,20 @@ setActiveSeason(currentActiveSeason);
       showToast("Gagal memperbarui foto profil", "error");
     } else {
       showToast("Foto profil berhasil diperbarui", "success");
-      loadAllData();
+      loadParticipants();
     }
-  }, [showToast, loadAllData]);
+  }, [showToast, loadParticipants]);
 
   const seedDatabase = useCallback(async () => {
     setIsLoading(true);
     try {
       showToast("Sedang memindahkan data ke Supabase...", "info");
-      
-      // Import mock data dynamically to avoid clutter
-      const { 
-        mockParticipants, 
-        mockQuizzes, 
-        mockRedeemPackages, 
-        mockBudgetStatus 
+
+      const {
+        mockParticipants,
+        mockQuizzes,
+        mockRedeemPackages: seedPackages,
+        mockBudgetStatus: seedBudget,
       } = await import("../services/mockData");
 
       // 1. Seed Participants
@@ -1057,7 +1064,7 @@ setActiveSeason(currentActiveSeason);
 
       // 2. Seed Packages
       await supabase.from("redeem_packages").insert(
-        mockRedeemPackages.map(rp => ({
+        seedPackages.map(rp => ({
           name: rp.name,
           description: rp.description,
           points_required: rp.pointsRequired,
@@ -1080,8 +1087,8 @@ setActiveSeason(currentActiveSeason);
 
       // 4. Seed Budget
       await supabase.from("budget_settings").insert([{
-        month: mockBudgetStatus.month,
-        total_budget: mockBudgetStatus.totalBudget
+        month: seedBudget.month,
+        total_budget: seedBudget.totalBudget
       }]);
 
       showToast("Berhasil memindahkan data! Silakan refresh halaman.", "success");
@@ -1098,65 +1105,35 @@ setActiveSeason(currentActiveSeason);
     if (!activeSeason) {
       return { success: false, message: "Tidak ada season aktif saat ini." };
     }
-
-    try {
-      // 1. Get current leaderboard
-      const leaderboard = Object.entries(points)
-        .map(([id, p]) => ({
-          participantId: id,
-          finalPoints: p.total
-        }))
-        .sort((a, b) => b.finalPoints - a.finalPoints);
-      
-      // 2. Prepare season history entries
-      const historyEntries = leaderboard.map((p, index) => {
-        let badge: 'gold' | 'silver' | 'bronze' | null = null;
-        if (index === 0) badge = 'gold';
-        else if (index === 1) badge = 'silver';
-        else if (index === 2) badge = 'bronze';
-        
-        return {
-          season_id: activeSeason.id,
-          participant_id: p.participantId,
-          final_points: p.finalPoints,
-          rank: index + 1,
-          badge
-        };
-      });
-
-      // 3. Update current season end_date
-      const now = new Date();
-      await supabase.from("seasons").update({ end_date: now.toISOString() }).eq("id", activeSeason.id);
-
-      // 4. Insert into season_history
-      if (historyEntries.length > 0) {
-        await supabase.from("season_history").insert(historyEntries);
-      }
-
-      // 5. Create next season
-      await supabase.from("seasons").insert({
-        name: nextSeasonName,
-        start_date: now.toISOString()
-      });
-
-      showToast(`Season ${activeSeason.name} berhasil diakhiri! Pemenang telah disimpan.`, "success");
-      await loadAllData();
-      return { success: true, message: "Season berhasil diakhiri." };
-    } catch (err: any) {
-      return { success: false, message: err.message || "Gagal mengakhiri season." };
+    const { error } = await supabase.rpc("end_season", { p_next_name: nextSeasonName });
+    if (error) {
+      rpcError(error, "Gagal mengakhiri season");
+      return { success: false, message: error.message || "Gagal mengakhiri season." };
     }
-  }, [activeSeason, points, showToast, loadAllData]);
+    showToast(`Season ${activeSeason.name} berhasil diakhiri! Pemenang telah disimpan.`, "success");
+    await loadAllData();
+    return { success: true, message: "Season berhasil diakhiri." };
+  }, [activeSeason, rpcError, showToast, loadAllData]);
+
+  // Nama peserta ditempel di sini (bukan di loader) agar baris dari payload realtime juga bernama.
+  const namedAttendance = useMemo(() => {
+    const names = new Map(participants.map((p) => [String(p.id), p.nama]));
+    return attendanceLog.map((a) => ({ ...a, participantName: names.get(String(a.participantId)) || "Unknown" }));
+  }, [attendanceLog, participants]);
+  const namedAdzan = useMemo(() => {
+    const names = new Map(participants.map((p) => [String(p.id), p.nama]));
+    return adzanLog.map((a) => ({ ...a, participantName: names.get(String(a.participantId)) || "Unknown" }));
+  }, [adzanLog, participants]);
 
   const contextValue = useMemo(() => ({
     participants,
     addParticipant,
     updateParticipantStatus,
     points,
-    transactions,
-    addTransaction,
-    attendanceLog,
+    ledgerReady,
+    attendanceLog: namedAttendance,
     recordAttendance,
-    adzanLog,
+    adzanLog: namedAdzan,
     recordAdzan,
     recordSholawatIqomah,
     redeemPackages,
@@ -1166,6 +1143,7 @@ setActiveSeason(currentActiveSeason);
     quizzes,
     quizAttempts,
     submitQuiz,
+    awardGameWin,
     addQuiz,
     updateQuiz,
     toggleQuizActive,
@@ -1178,6 +1156,7 @@ setActiveSeason(currentActiveSeason);
     setQuickAbsen,
     seedDatabase,
     uploadAvatar,
+    optimizeAvatars,
     updateParticipantAvatar,
     schedule,
     updateSchedule,
@@ -1186,13 +1165,13 @@ setActiveSeason(currentActiveSeason);
     seasonHistory,
     endSeason,
   }), [
-    participants, addParticipant, updateParticipantStatus, points,
-    transactions, addTransaction, attendanceLog, recordAttendance,
-    adzanLog, recordAdzan, recordSholawatIqomah, redeemPackages,
+    participants, addParticipant, updateParticipantStatus, points, ledgerReady,
+    namedAttendance, recordAttendance,
+    namedAdzan, recordAdzan, recordSholawatIqomah, redeemPackages,
     redeemHistory, requestRedeem, processRedeem, quizzes, quizAttempts,
-    submitQuiz, addQuiz, updateQuiz, toggleQuizActive, deleteQuiz,
+    submitQuiz, awardGameWin, addQuiz, updateQuiz, toggleQuizActive, deleteQuiz,
     budgetStatus, toast, showToast, isLoading, quickAbsen, setQuickAbsen,
-    seedDatabase, uploadAvatar, updateParticipantAvatar, schedule, updateSchedule,
+    seedDatabase, uploadAvatar, optimizeAvatars, updateParticipantAvatar, schedule, updateSchedule,
     activeSeason, allSeasons, seasonHistory, endSeason,
   ]);
 
@@ -1202,6 +1181,20 @@ setActiveSeason(currentActiveSeason);
     </AppContext.Provider>
   );
 };
+
+/** Perkecil gambar ke sisi terpanjang `max` px dan ubah ke WebP. */
+async function resizeImage(file: Blob, max: number): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Gagal memproses gambar"))), "image/webp", 0.85),
+  );
+}
 
 export const useApp = (): AppContextType => {
   const ctx = useContext(AppContext);

@@ -22,8 +22,7 @@ const QuizPlayer: React.FC<{ quiz: Quiz; participantId: string; onDone: (score: 
   };
 
   const handleSubmit = async () => {
-    const finalAnswers = answers.map(a => a ?? 0);
-    const res = await submitQuiz(participantId, quiz.id, finalAnswers);
+    const res = await submitQuiz(participantId, quiz.id, answers);
     setResult(res); setSubmitted(true); onDone(res.score, res.earnedPoints);
   };
 
@@ -206,7 +205,7 @@ const QuizForm: React.FC<{
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export const QuizPage: React.FC = () => {
-  const { quizzes, quizAttempts, participants, addQuiz, updateQuiz, toggleQuizActive, deleteQuiz, addTransaction } = useApp();
+  const { quizzes, quizAttempts, participants, addQuiz, updateQuiz, toggleQuizActive, deleteQuiz, awardGameWin } = useApp();
   const [playModal, setPlayModal] = useState<{ quiz: Quiz; participantId: string } | null>(null);
   const [addModal, setAddModal] = useState(false);
   const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
@@ -458,15 +457,9 @@ export const QuizPage: React.FC = () => {
               const winnerId = caturParticipants[winner].id;
               alert(`Permainan Selesai! Pemenangnya adalah: ${winnerName} 🏆\nSelamat! ${winnerName} mendapatkan +5 Poin!`);
               
-              // Memberikan poin 5 ke pemenang
-              addTransaction({
-                participantId: winnerId,
-                adminId: 'system',
-                type: "adjustment",
-                points: 5,
-                reason: `Menang Battle Royale Catur: ${caturPlayQuiz.title}`
-              });
-              
+              // Poin pemenang dicatat di server (dibatasi per hari)
+              awardGameWin(winnerId, caturPlayQuiz.id);
+
               setResultModal({ score: 100, pts: 5 });
             } else {
               alert('Permainan Seri!');

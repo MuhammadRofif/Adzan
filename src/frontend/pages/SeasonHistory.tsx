@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useApp } from "../context/AppContext";
 import { Trophy, Star, Search, Award, CalendarDays, Medal, PartyPopper } from "lucide-react";
 import { cn } from "../utils/cn";
-import confetti from "canvas-confetti";
+import confetti from "../utils/confetti";
 
 export const SeasonHistoryPage: React.FC = () => {
   const { seasonHistory, participants, allSeasons } = useApp();
@@ -182,7 +182,7 @@ export const SeasonHistoryPage: React.FC = () => {
                             #{h.rank}
                           </div>
                           <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-100 border border-gray-200 shrink-0">
-                            <img 
+                            <img loading="lazy" decoding="async" 
                               src={participant?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${participant?.nama}`} 
                               alt={participant?.nama}
                               className="w-full h-full object-cover"
@@ -237,7 +237,7 @@ const WinnerCard = ({ history, participant, getBadgeBg, renderBadge, isGold = fa
           "rounded-full overflow-hidden bg-white shadow-[0_10px_20px_rgba(0,0,0,0.2)] mb-3 sm:mb-5 border-2 sm:border-4 shrink-0 relative z-10",
           isGold ? "w-16 h-16 sm:w-36 sm:h-36 border-yellow-200 mt-5 sm:mt-8 ring-4 ring-yellow-400/50" : "w-12 h-12 sm:w-28 sm:h-28 border-white ring-2 ring-black/5"
         )}>
-          <img 
+          <img loading="lazy" decoding="async" 
             src={participant?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${participant?.nama}`} 
             alt={participant?.nama}
             className="w-full h-full object-cover"

@@ -40,7 +40,13 @@ export const BocilRedeem: React.FC = () => {
   }, [confirmPkg]);
 
   const activeParticipants = participants.filter(p => p.status === 'aktif');
-  const participantPts = selectedParticipant ? (points[selectedParticipant]?.total ?? 0) : 0;
+  // Poin yang sedang menunggu persetujuan admin sudah "dipesan" (server menghitung hal yang sama).
+  const pendingPts = selectedParticipant
+    ? redeemHistory
+        .filter(r => String(r.participantId) === String(selectedParticipant) && r.status === 'pending')
+        .reduce((sum, r) => sum + r.pointsSpent, 0)
+    : 0;
+  const participantPts = selectedParticipant ? Math.max(0, (points[selectedParticipant]?.total ?? 0) - pendingPts) : 0;
   const participantName = activeParticipants.find(p => p.id === selectedParticipant)?.nama;
 
   const handleRedeem = async (packageId: string) => {
@@ -111,9 +117,12 @@ export const BocilRedeem: React.FC = () => {
       {/* Points Display */}
       {selectedParticipant && (
         <div className="max-w-md mx-auto mb-8 animate-fade-in">
-          <div className="bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl p-5 text-center text-white shadow-lg shadow-emerald-200">
-            <p className="text-sm text-white/80 mb-1">Poin kamu saat ini, {participantName}:</p>
+          <div className="bg-gradient-to-r from-sky-500 to-mint-500 rounded-3xl p-5 text-center text-white shadow-toy-sky">
+            <p className="text-sm text-white/90 mb-1 font-bold">Poin yang bisa ditukar, {participantName}:</p>
             <p className="text-4xl font-extrabold font-heading">{participantPts}</p>
+            {pendingPts > 0 && (
+              <p className="text-xs font-bold text-white/90 mt-1">⏳ {pendingPts} poin sedang menunggu persetujuan admin</p>
+            )}
             <p className="text-sm text-white/70">poin tersedia</p>
           </div>
         </div>

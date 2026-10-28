@@ -2,10 +2,13 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useApp } from "../../context/AppContext";
 import { cn } from "../../utils/cn";
 import { AdzanEntry, Participant, PANGKAT_LEVELS, getPangkat } from "../../../shared/types";
-import confetti from "canvas-confetti";
+import confetti from "../../utils/confetti";
 import { Modal } from "../../components/ui/Modal";
 import { Button } from "../../components/ui/Button";
-import { Award, Mic, CheckCircle2, BookOpen, Star, AlignCenter, History, TrendingUp, TrendingDown, Clock } from "lucide-react";
+import { Award, Mic, CheckCircle2, BookOpen, Star, AlignCenter, History } from "lucide-react";
+import { PointHistoryList } from "../../components/bocil/PointHistoryList";
+import { PrayerTimesCard } from "../../components/bocil/PrayerTimesCard";
+import { IslamicScene } from "../../components/bocil/IslamicScene";
 
 // ─── Animated Counter ─────────────────────────────────────────────────────────
 const AnimatedNumber: React.FC<{ target: number; duration?: number }> = ({
@@ -60,7 +63,7 @@ const Medal: React.FC<{ rank: number }> = ({ rank }) => {
 };
 
 export const BocilDashboard: React.FC = () => {
-  const { participants, points, adzanLog, attendanceLog, quizAttempts, quizzes, redeemHistory, schedule, transactions, seasonHistory, allSeasons } =
+  const { participants, points, adzanLog, attendanceLog, schedule, seasonHistory, allSeasons, activeSeason, ledgerReady, redeemPackages } =
     useApp();
 
   const getPastSeasonBadges = (participantId: string | number) => {
@@ -175,6 +178,7 @@ export const BocilDashboard: React.FC = () => {
           : "Selamat Malam";
   const greetingEmoji =
     hour < 12 ? "🌅" : hour < 15 ? "☀️" : hour < 18 ? "🌇" : "🌙";
+  const isNight = hour >= 18 || hour < 5;
 
   const myStats = useMemo(() => {
     return selectedUser ? points[String(selectedUser)] : null;
@@ -192,20 +196,20 @@ export const BocilDashboard: React.FC = () => {
       : { current: null, next: null };
   }, [myStats]);
 
+  const myLevelIndex = myPangkat ? PANGKAT_LEVELS.findIndex((l) => l.min === myPangkat.min) : 0;
+  const myProgress = myStats && myPangkat && myNextPangkat
+    ? Math.min(100, Math.max(0, Math.round(((myStats.total - myPangkat.min) / (myNextPangkat.min - myPangkat.min)) * 100)))
+    : 100;
+  const myPastBadges = selectedUser ? getPastSeasonBadges(selectedUser) : [];
+  // Hadiah termurah yang belum terjangkau → target motivasi berikutnya
+  const nextReward = myStats
+    ? [...redeemPackages].filter((p) => p.isAvailable && p.pointsRequired > myStats.total).sort((a, b) => a.pointsRequired - b.pointsRequired)[0]
+    : undefined;
+
   // Gabungkan adzan + latihan, sort terbaru dulu, ambil 10
   const recentActivity = useMemo(() => {
-    const getPreciseTime = (item: any, type: string) => {
-      if (item.createdAt) {
-        return new Date(item.createdAt).getTime();
-      }
-      // Find transaction of same participant, type, and matching prayer time in reason
-      const tx = transactions.find(t => 
-        String(t.participantId) === String(item.participantId) &&
-        t.type === type &&
-        t.reason.toLowerCase().includes(item.prayerTime?.toLowerCase() || '')
-      );
-      return tx ? new Date(tx.timestamp).getTime() : new Date(item.date).getTime();
-    };
+    const getPreciseTime = (item: { createdAt?: Date; date: string }) =>
+      item.createdAt ? new Date(item.createdAt).getTime() : new Date(item.date).getTime();
 
     let filteredAdzan = adzanLog;
     let filteredAttendance = attendanceLog;
@@ -216,19 +220,19 @@ export const BocilDashboard: React.FC = () => {
     }
 
     const adzanItems = filteredAdzan.map(a => {
-      const time = getPreciseTime(a, 'adzan');
+      const time = getPreciseTime(a);
       return { ...a, _type: 'adzan' as const, _time: time };
     });
 
     const attendItems = filteredAttendance.map(a => {
-      const time = getPreciseTime(a, 'attendance');
+      const time = getPreciseTime(a);
       return { ...a, _type: 'latihan' as const, _time: time };
     });
 
     return [...adzanItems, ...attendItems]
       .sort((a, b) => b._time - a._time)
       .slice(0, 10);
-  }, [adzanLog, attendanceLog, transactions, selectedUser]);
+  }, [adzanLog, attendanceLog, selectedUser]);
 
   const neighboringFriends = useMemo(() => {
     if (!viewParticipant) return [];
@@ -855,126 +859,136 @@ export const BocilDashboard: React.FC = () => {
 
   return (
     <div className="bocil-page">
-      {/* Hero Section */}
-      <div className="bocil-hero mb-8">
-        <Sparkles />
-        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="text-center md:text-left">
-            <p className="text-lg sm:text-xl text-white/80 mb-2 font-medium animate-fade-in">
-              {greetingEmoji} {greeting},{" "}
-              {myInfo ? myInfo.nama.split(" ")[0] : "Bocil Masjid"}!
+      {/* Hero: sapaan + profil anak + jadwal salat */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 lg:items-start gap-4 sm:gap-6 mb-6">
+        <section className={cn("bocil-hero lg:col-span-3", isNight && "bocil-hero-night")} aria-label="Profil kamu">
+          <IslamicScene night={isNight} className="absolute inset-x-0 bottom-0 w-full h-28 sm:h-36 pointer-events-none" />
+          <div className="relative z-10 pb-24 sm:pb-28">
+            <p className={cn("text-base sm:text-lg font-bold animate-fade-in", isNight ? "text-sky-100" : "text-sky-900/80")}>
+              {greetingEmoji} {greeting}, {myInfo ? myInfo.nama.split(" ")[0] : "Bocil Masjid"}!
             </p>
-            <h1
-              className="text-3xl sm:text-5xl font-extrabold text-white font-heading mb-3 animate-fade-in"
-              style={{ animationDelay: "0.1s" }}
-            >
-              Adzan<span className="text-yellow-300">Challenge</span> 🏆
+            <h1 className={cn("font-heading text-3xl sm:text-4xl font-extrabold leading-tight mb-4", isNight ? "text-white" : "text-slate-800")}>
+              Adzan<span className="text-sun-500">Challenge</span> 🏆
             </h1>
-          </div>
 
-          {/* User Selector / My Progress */}
-          <div
-            className="w-full md:w-auto animate-fade-in"
-            style={{ animationDelay: "0.3s" }}
-          >
             {selectedUser && myStats && myPangkat ? (
-              <div className="bg-white/15 border border-white/20 rounded-3xl p-6 text-white w-full">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-4 flex-1 min-w-0 pr-2">
-                    <div
-                      className={cn(
-                        "w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-xl bg-gradient-to-br shrink-0 border-2 border-white/30 overflow-hidden",
-                        myPangkat?.color || "from-gray-400 to-gray-500",
-                      )}
-                    >
-                      {myInfo?.avatar_url ? (
-                        <img
-                          src={myInfo.avatar_url}
-                          alt={myInfo.nama}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        myInfo?.nama.charAt(0) || "A"
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest leading-tight">
-                        Hai, {myInfo?.nama || "Prajurit"}!
-                      </p>
-                      <p className="text-xl font-black font-heading leading-tight mt-0.5">
-                        {myPangkat?.emoji || "🪖"} {myPangkat?.title || "Prajurit Masjid"}
-                      </p>
-                      <p className="text-xs font-bold text-yellow-300 mt-1">
-                        ✨ {myStats?.total || 0} Total Poin
-                      </p>
-                    </div>
+              <div className="bocil-profile">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className={cn("w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black text-white bg-gradient-to-br shrink-0 border-4 border-white shadow-toy overflow-hidden", myPangkat.color)}>
+                    {myInfo?.avatar_url ? (
+                      <img src={myInfo.avatar_url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                    ) : (
+                      myInfo?.nama.charAt(0) || "A"
+                    )}
                   </div>
-                  <button
-                    onClick={() => setSelectedUser(null)}
-                    className="p-2 hover:bg-white/20 rounded-xl transition-colors shrink-0 group"
-                  >
-                    <span className="text-[10px] font-black text-white/50 group-hover:text-white uppercase">
-                      Ganti
-                    </span>
-                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wider truncate">{myInfo?.nama}</p>
+                    <p className="font-heading text-lg sm:text-xl font-extrabold text-slate-800 leading-tight break-words">
+                      {myPangkat.emoji} {myPangkat.title}
+                    </p>
+                    <p className="text-xs font-bold text-slate-500">Level {myLevelIndex + 1} dari {PANGKAT_LEVELS.length}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-heading text-3xl sm:text-4xl font-extrabold text-sky-600 tabular-nums leading-none">
+                      <AnimatedNumber target={myStats.total} />
+                    </p>
+                    <p className="text-[11px] font-extrabold text-slate-500 uppercase">poin ⭐</p>
+                  </div>
                 </div>
 
                 {myNextPangkat ? (
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-[10px] font-black uppercase">
-                      <span className="text-primary-100">
-                        Ke {myNextPangkat.title}
-                      </span>
-                      <span className="text-yellow-300">
-                        {myNextPangkat.min - myStats.total} poin lagi!
-                      </span>
+                  <div className="mt-4">
+                    <div className="flex justify-between text-xs font-extrabold mb-1.5">
+                      <span className="text-slate-600">Menuju {myNextPangkat.emoji} {myNextPangkat.title}</span>
+                      <span className="text-sun-600">{myNextPangkat.min - myStats.total} lagi!</span>
                     </div>
-                    <div className="h-2 w-full bg-black/20 rounded-full overflow-hidden border border-white/10">
-                      <div
-                        className="h-full bg-gradient-to-r from-yellow-300 to-amber-400 rounded-full transition-all duration-1000"
-                        style={{
-                          width: `${Math.min(100, Math.round(((myStats.total - myPangkat.min) / (myNextPangkat.min - myPangkat.min)) * 100))}%`,
-                        }}
-                      />
+                    <div
+                      className="bocil-progress"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={myProgress}
+                      aria-label="Progres ke pangkat berikutnya"
+                    >
+                      <div className="bocil-progress-fill" style={{ width: `${myProgress}%` }} />
                     </div>
                   </div>
                 ) : (
-                  <p className="text-center text-xs font-black text-yellow-300 animate-pulse">
-                    👑 PANGKAT TERTINGGI! MASYAA ALLAH!
+                  <p className="mt-4 text-center text-sm font-black text-sun-600">👑 Pangkat tertinggi! Masya Allah!</p>
+                )}
+
+                {/* Lencana pangkat yang sudah diraih season ini + juara season lalu */}
+                <div className="mt-4 flex flex-wrap items-center gap-1.5" aria-label="Lencana kamu">
+                  {PANGKAT_LEVELS.slice(0, Math.max(myLevelIndex + 2, 5)).map((lvl, i) => (
+                    <span
+                      key={lvl.min}
+                      title={lvl.title}
+                      className={cn("bocil-badge-chip", i <= myLevelIndex ? "bg-sun-100 border-sun-300" : "bg-slate-100 border-slate-200 grayscale opacity-50")}
+                    >
+                      <span aria-hidden>{lvl.emoji}</span>
+                      <span className="sr-only">{lvl.title}{i <= myLevelIndex ? " (diraih)" : " (belum)"}</span>
+                    </span>
+                  ))}
+                  {myPastBadges.map((b, i) => (
+                    <span key={i} title={b.label} className="bocil-badge-chip bg-sky-100 border-sky-300">
+                      <span aria-hidden>{b.emoji}</span><span className="sr-only">{b.label}</span>
+                    </span>
+                  ))}
+                </div>
+
+                <div className="mt-4 grid grid-cols-4 gap-2 text-center">
+                  {[
+                    { label: "Adzan", value: myStats.adzanCount, icon: "📢" },
+                    { label: "Sholawat", value: myStats.sholawatIqomahCount, icon: "📿" },
+                    { label: "Latihan", value: myStats.attendanceCount, icon: "🏃" },
+                    { label: "Quiz", value: myStats.quizCount, icon: "🎮" },
+                  ].map((s) => (
+                    <div key={s.label} className="rounded-2xl bg-sky-50 py-2">
+                      <p className="text-lg leading-none" aria-hidden>{s.icon}</p>
+                      <p className="font-heading text-lg font-extrabold text-slate-800 tabular-nums">{s.value}</p>
+                      <p className="text-[10px] font-extrabold text-slate-500 uppercase">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {nextReward && (
+                  <p className="mt-3 text-sm font-bold text-slate-600 bg-mint-50 rounded-2xl px-3 py-2">
+                    🎁 {nextReward.pointsRequired - myStats.total} poin lagi untuk <span className="text-mint-700">{nextReward.name}</span>
                   </p>
                 )}
+
+                <button
+                  onClick={() => setSelectedUser(null)}
+                  className="mt-3 text-xs font-extrabold text-slate-400 hover:text-sky-600 transition-colors"
+                >
+                  Bukan kamu? Ganti nama
+                </button>
               </div>
             ) : (
-              <div className="bg-white/15 border border-white/20 rounded-3xl p-6 text-white text-center">
-                <p className="text-sm font-bold mb-4">
-                  Ayo mulai berburu pahala! 🔥
-                </p>
-                <select
-                  className="bg-white/20 border border-white/30 rounded-xl pl-4 pr-10 py-2.5 text-white outline-none w-full appearance-none cursor-pointer hover:bg-white/30 transition-all font-bold truncate"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                    backgroundPosition: `right 0.75rem center`,
-                    backgroundRepeat: `no-repeat`,
-                    backgroundSize: `1.5em 1.5em`
-                  }}
-                  value={selectedUser || ""}
-                  onChange={(e) => setSelectedUser(e.target.value)}
-                >
-                  <option value="" className="text-gray-900">
-                    Pilih Nama Kamu...
-                  </option>
+              <div className="bocil-profile">
+                <p className="font-heading text-lg font-extrabold text-slate-800 mb-3">Kamu siapa? Ketuk namamu 👇</p>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-64 overflow-y-auto pr-1">
                   {participants
                     .filter((p) => p.status === "aktif")
                     .map((p) => (
-                      <option key={p.id} value={p.id} className="text-gray-900">
-                        {p.nama}
-                      </option>
+                      <button
+                        key={p.id}
+                        onClick={() => setSelectedUser(String(p.id))}
+                        className="flex flex-col items-center gap-1 rounded-2xl bg-sky-50 hover:bg-sky-100 active:scale-95 border-2 border-transparent hover:border-sky-300 p-2 transition-all"
+                      >
+                        <span className="w-11 h-11 rounded-full bg-gradient-to-br from-sky-400 to-mint-400 text-white font-black flex items-center justify-center overflow-hidden border-2 border-white">
+                          {p.avatar_url ? <img src={p.avatar_url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" /> : p.nama.charAt(0)}
+                        </span>
+                        <span className="text-xs font-extrabold text-slate-700 truncate max-w-full">{p.nama.split(" ")[0]}</span>
+                      </button>
                     ))}
-                </select>
+                </div>
               </div>
             )}
           </div>
-        </div>
+        </section>
+
+        <PrayerTimesCard schedule={schedule} className="lg:col-span-2" />
       </div>
 
       {/* Motivational Ticker */}
@@ -1024,7 +1038,7 @@ export const BocilDashboard: React.FC = () => {
                       )}
                     >
                       {leaderboard[1].avatar_url ? (
-                        <img
+                        <img loading="lazy" decoding="async"
                           src={leaderboard[1].avatar_url}
                           alt={leaderboard[1].nama}
                           className="w-full h-full object-cover"
@@ -1885,7 +1899,7 @@ export const BocilDashboard: React.FC = () => {
                 className="absolute inset-0 z-50 flex items-center justify-center bg-transparent rounded-2xl overflow-hidden animate-in fade-in zoom-in duration-200"
                 onClick={() => setPreviewImage(null)}
               >
-                <img 
+                <img loading="lazy" decoding="async" 
                   src={previewImage} 
                   alt="Preview Profil" 
                   className="w-full h-full object-cover cursor-pointer" 
@@ -2091,160 +2105,13 @@ export const BocilDashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="relative border-l-2 border-gray-100 pl-4 ml-2 space-y-6">
-              {(() => {
-                const myId = String(viewParticipant!.id);
-                const allEvents: any[] = [];
+            <PointHistoryList
+              participantId={viewParticipant!.id}
+              season={activeSeason}
+              currentBalance={points[String(viewParticipant!.id)]?.total ?? 0}
+              ledgerReady={ledgerReady}
+            />
 
-                // 1. Adzan & Sholawat
-                adzanLog.filter(a => String(a.participantId) === myId).forEach(a => {
-                  allEvents.push({
-                    id: 'adzan_' + a.id,
-                    type: a.adzanPoints === 8 ? 'sholawat' : 'adzan',
-                    points: a.total,
-                    reason: (a.adzanPoints === 8 ? 'Sholawat + Iqomah' : 'Adzan') + (a.prayerTime ? ` ${a.prayerTime}` : '') + ` - Sikap: ${a.attitude}`,
-                    timestamp: a.createdAt || a.date
-                  });
-                });
-
-                // 2. Latihan (Attendance)
-                attendanceLog.filter(a => String(a.participantId) === myId).forEach(a => {
-                  allEvents.push({
-                    id: 'att_' + a.id,
-                    type: 'attendance',
-                    points: a.points,
-                    reason: `Latihan` + (a.prayerTime ? ` ${a.prayerTime}` : ''),
-                    timestamp: a.createdAt || a.date
-                  });
-                });
-
-                // 3. Quiz
-                quizAttempts.filter(q => String(q.participantId) === myId).forEach(q => {
-                  const quizTitle = quizzes.find(qz => String(qz.id) === String(q.quizId))?.title || 'Kuis';
-                  allEvents.push({
-                    id: 'quiz_' + q.id,
-                    type: 'quiz',
-                    points: q.earnedPoints || 0,
-                    reason: `Quiz: ${quizTitle} - Skor: ${q.score}%`,
-                    timestamp: q.completedAt
-                  });
-                });
-
-                // 4. Adjustments from transactions
-                transactions.filter(t => String(t.participantId) === myId && t.type === 'adjustment').forEach(t => {
-                  allEvents.push({
-                    id: 'tx_' + t.id,
-                    type: 'adjustment',
-                    points: t.points,
-                    reason: t.reason,
-                    timestamp: t.timestamp
-                  });
-                });
-
-                // 5. Redeem History (Approved)
-                redeemHistory.filter(r => String(r.participantId) === myId && r.status === 'approved').forEach(r => {
-                  allEvents.push({
-                    id: 'redeem_' + r.id,
-                    type: 'redeem',
-                    points: -r.pointsSpent,
-                    reason: `Tukar Hadiah: ${r.packageName}`,
-                    timestamp: r.processedAt || r.requestedAt
-                  });
-                });
-
-                const userTxs = allEvents.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-                let runningTotal = 0;
-                const txsWithBalance = userTxs.map(tx => {
-                  const previousTotal = runningTotal;
-                  runningTotal += tx.points;
-                  return { ...tx, previousTotal, newTotal: runningTotal };
-                });
-
-                // Reverse to display newest first
-                return txsWithBalance.reverse().map((tx) => {
-                  const isPositive = tx.points > 0;
-                  const isZero = tx.points === 0;
-                  const Icon = isPositive ? TrendingUp : isZero ? Clock : TrendingDown;
-                  
-                  // Tentukan warna dan ikon berdasarkan tipe
-                  let typeColor = "bg-gray-100 text-gray-500 border-gray-200";
-                  let typeIcon = "📝";
-                  
-                  if (tx.type === 'adzan') {
-                    typeColor = "bg-orange-100 text-orange-600 border-orange-200";
-                    typeIcon = "📢";
-                  } else if (tx.type === 'attendance') {
-                    typeColor = "bg-blue-100 text-blue-600 border-blue-200";
-                    typeIcon = "🏃";
-                  } else if (tx.type === 'quiz') {
-                    typeColor = "bg-purple-100 text-purple-600 border-purple-200";
-                    typeIcon = "🎮";
-                  } else if (tx.type === 'adjustment') {
-                    typeColor = "bg-emerald-100 text-emerald-600 border-emerald-200";
-                    typeIcon = "⭐";
-                  } else if (tx.type === 'redeem') {
-                    typeColor = "bg-rose-100 text-rose-600 border-rose-200";
-                    typeIcon = "🎁";
-                  }
-
-                  return (
-                    <div key={tx.id} className="relative group animate-fade-in">
-                      {/* Timeline Dot */}
-                      <div className={`absolute -left-[25px] mt-1.5 w-5 h-5 rounded-full border-2 border-white shadow-sm flex items-center justify-center ${isPositive ? 'bg-emerald-500' : isZero ? 'bg-gray-400' : 'bg-red-500'}`}>
-                        <Icon className="w-3 h-3 text-white" />
-                      </div>
-                      
-                      <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow group-hover:border-primary-100">
-                        <div className="flex justify-between items-start gap-2">
-                          <div className="flex gap-2 items-start">
-                            <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 text-sm ${typeColor}`}>
-                              {typeIcon}
-                            </div>
-                            <div>
-                              <p className="font-bold text-gray-800 text-sm">{tx.reason}</p>
-                              <div className="flex items-center gap-1.5 mt-1 text-xs text-gray-500">
-                                <Clock className="w-3 h-3" />
-                                {new Date(tx.timestamp).toLocaleString('id-ID', {
-                                  day: 'numeric',
-                                  month: 'short',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="flex flex-col items-end">
-                            <div className={`shrink-0 font-black px-2.5 py-1 rounded-lg text-sm border ${
-                              isPositive 
-                                ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
-                                : isZero
-                                  ? 'bg-gray-50 text-gray-600 border-gray-100'
-                                  : 'bg-red-50 text-red-600 border-red-100'
-                            }`}>
-                              {isPositive ? '+' : ''}{tx.points} pts
-                            </div>
-                            <div className="text-[10px] text-gray-400 font-semibold mt-1">
-                              {tx.previousTotal} ➔ <span className={isPositive ? "text-emerald-500" : isZero ? "text-gray-500" : "text-red-500"}>{tx.newTotal} pts</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                });
-              })()}
-
-              {transactions.filter(t => String(t.participantId) === String(viewParticipant!.id)).length === 0 && (
-                <div className="text-center py-8 text-gray-400">
-                  <div className="text-4xl mb-2">👻</div>
-                  <p className="font-semibold">Belum ada riwayat poin.</p>
-                </div>
-              )}
-            </div>
-            
             <div className="pt-2 border-t border-gray-100">
               <Button
                 onClick={() => setShowHistoryModal(false)}

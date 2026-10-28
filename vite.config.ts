@@ -25,7 +25,7 @@ export default defineConfig({
           // Supabase client — separate chunk
           'vendor-supabase': ['@supabase/supabase-js'],
           // UI libraries — lucide icons, framer-motion, clsx, tailwind-merge
-          'vendor-ui': ['lucide-react', 'framer-motion', 'clsx', 'tailwind-merge'],
+          'vendor-ui': ['lucide-react', 'clsx', 'tailwind-merge'],
         },
       },
     },

@@ -1,7 +1,8 @@
 import React, { ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { Home, Users, BookOpen, Gift, Settings, Calendar, Award } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { useAdminSession } from '../../services/auth';
 
 interface SidebarProps {
   isMobileOpen: boolean;
@@ -25,6 +26,8 @@ const navItems: NavItem[] = [
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen }) => {
+  const { email, signOut } = useAdminSession();
+  const navigate = useNavigate();
   return (
     <>
       {/* Mobile overlay */}
@@ -105,9 +108,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, setIsMobileOpen 
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900 truncate">Admin Masjid</p>
-                <p className="text-xs text-gray-500 truncate">Administrator</p>
+                <p className="text-xs text-gray-500 truncate">{email ?? 'Administrator'}</p>
               </div>
             </div>
+            <button
+              onClick={() => { signOut().then(() => navigate('/login')); }}
+              className="mt-3 w-full text-xs font-semibold text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg py-2 transition-colors"
+            >
+              Keluar
+            </button>
           </div>
         </div>
       </div>
