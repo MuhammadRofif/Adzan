@@ -19,10 +19,12 @@ import {
   AdzanEntry,
   Season,
   SeasonHistory,
+  AdzanVideo,
 } from "../../shared/types";
 import {
   mockRedeemPackages,
   mockBudgetStatus,
+  mockAdzanVideos,
 } from "../services/mockData";
 import { supabase } from "../services/supabase";
 
@@ -97,6 +99,15 @@ interface AppContextType {
   updateQuiz: (id: string, quiz: Omit<Quiz, "id" | "createdAt">) => void;
   toggleQuizActive: (quizId: string) => void;
   deleteQuiz: (quizId: string) => void;
+
+  // Adzan Videos
+  adzanVideos: AdzanVideo[];
+  loadAdzanVideos: () => Promise<void>;
+  addAdzanVideo: (video: Omit<AdzanVideo, "id" | "createdAt" | "updatedAt">) => Promise<boolean>;
+  updateAdzanVideo: (id: string, video: Partial<AdzanVideo>) => Promise<boolean>;
+  toggleVideoActive: (id: string) => Promise<void>;
+  deleteAdzanVideo: (id: string) => Promise<void>;
+  setParticipantTargetIrama: (participantId: string, irama: string) => Promise<void>;
 
   // Budget
   budgetStatus: typeof mockBudgetStatus;
@@ -214,8 +225,25 @@ const mapParticipant = (p: any): Participant => ({
   nama: p.nama,
   status: p.status,
   avatar_url: p.avatar_url,
+  target_irama: p.target_irama || undefined,
   createdAt: new Date(p.created_at),
   updatedAt: new Date(p.updated_at),
+});
+
+const mapAdzanVideo = (v: any): AdzanVideo => ({
+  id: String(v.id),
+  title: v.title,
+  muadzin: v.muadzin,
+  category: v.category || "Umum",
+  youtubeUrl: v.youtube_url,
+  youtubeId: v.youtube_id,
+  difficulty: v.difficulty || "Mudah",
+  description: v.description || "",
+  tips: v.tips || "",
+  orderIndex: v.order_index ?? 0,
+  isActive: v.is_active !== false,
+  createdAt: v.created_at ? new Date(v.created_at) : undefined,
+  updatedAt: v.updated_at ? new Date(v.updated_at) : undefined,
 });
 
 const mapAttendance = (a: any): AttendanceEntry => ({
@@ -432,6 +460,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   );
   const [redeemHistory, setRedeemHistory] = useState<RedeemHistory[]>([]);
   const [quizzes, setQuizzes] = useState<Quiz[]>(() => cacheGet<any[]>(CACHE.quizzes)?.map(mapQuiz) ?? []);
+  const [adzanVideos, setAdzanVideos] = useState<AdzanVideo[]>(() => mockAdzanVideos);
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
   const [budgetStatus] = useState<BudgetStatus>(mockBudgetStatus);
   const [toast, setToast] = useState<{
@@ -536,6 +565,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     }
   }, []);
 
+  const loadAdzanVideos = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("adzan_videos")
+        .select("*")
+        .order("order_index", { ascending: true })
+        .order("created_at", { ascending: false });
+      if (!error && data && data.length > 0) {
+        setAdzanVideos(data.map(mapAdzanVideo));
+        return;
+      }
+    } catch (e) {
+      console.warn("Could not load adzan_videos from DB, using fallback mock", e);
+    }
+    setAdzanVideos(mockAdzanVideos);
+  }, []);
+
   const loadSchedule = useCallback(async () => {
     const { data, error } = await supabase.from("adzan_schedule").select("*").order("updated_at", { ascending: false }).limit(1);
     if (!error && data && data.length > 0) {
@@ -612,6 +658,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         loadQuizzes(),
         loadPackages(),
         loadSchedule(),
+        loadAdzanVideos(),
       ]);
       await loadPoints({ adzan, attendance, quiz, redeem });
     } catch (error) {
@@ -619,7 +666,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [loadSeasons, loadParticipants, loadAdzan, loadAttendance, loadQuizAttempts, loadRedeem, loadQuizzes, loadPackages, loadSchedule, loadPoints]);
+  }, [loadSeasons, loadParticipants, loadAdzan, loadAttendance, loadQuizAttempts, loadRedeem, loadQuizzes, loadPackages, loadSchedule, loadAdzanVideos, loadPoints]);
 
   useEffect(() => {
     loadAllData();
@@ -683,6 +730,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         case "adzan_schedule":
           debounced(table, loadSchedule);
           break;
+        case "adzan_videos":
+          debounced(table, loadAdzanVideos);
+          break;
         case "seasons":
         case "season_history":
           debounced("seasons", loadAllData, 1500);
@@ -692,7 +742,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
 
     const tables = [
       "point_balances", "adzan_log", "attendance_log", "quiz_attempts", "redeem_history",
-      "participants", "quizzes", "redeem_packages", "adzan_schedule", "seasons", "season_history",
+      "participants", "quizzes", "redeem_packages", "adzan_schedule", "adzan_videos", "seasons", "season_history",
     ];
     let channel = supabase.channel("app-changes");
     tables.forEach((table) => {
@@ -1018,6 +1068,97 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     [showToast, loadQuizzes],
   );
 
+  const addAdzanVideo = useCallback(
+    async (video: Omit<AdzanVideo, "id" | "createdAt" | "updatedAt">): Promise<boolean> => {
+      const { error } = await supabase.from("adzan_videos").insert([{
+        title: video.title,
+        muadzin: video.muadzin,
+        category: video.category,
+        youtube_url: video.youtubeUrl,
+        youtube_id: video.youtubeId,
+        difficulty: video.difficulty,
+        description: video.description || null,
+        tips: video.tips || null,
+        order_index: video.orderIndex ?? 0,
+        is_active: video.isActive,
+      }]);
+
+      if (error) {
+        showToast("Gagal menambahkan video: " + (error.message || "Error database"), "error");
+        return false;
+      }
+      showToast(`Video "${video.title}" berhasil ditambahkan.`);
+      loadAdzanVideos();
+      return true;
+    },
+    [showToast, loadAdzanVideos],
+  );
+
+  const updateAdzanVideo = useCallback(
+    async (id: string, video: Partial<AdzanVideo>): Promise<boolean> => {
+      const payload: any = { updated_at: new Date().toISOString() };
+      if (video.title !== undefined) payload.title = video.title;
+      if (video.muadzin !== undefined) payload.muadzin = video.muadzin;
+      if (video.category !== undefined) payload.category = video.category;
+      if (video.youtubeUrl !== undefined) payload.youtube_url = video.youtubeUrl;
+      if (video.youtubeId !== undefined) payload.youtube_id = video.youtubeId;
+      if (video.difficulty !== undefined) payload.difficulty = video.difficulty;
+      if (video.description !== undefined) payload.description = video.description;
+      if (video.tips !== undefined) payload.tips = video.tips;
+      if (video.orderIndex !== undefined) payload.order_index = video.orderIndex;
+      if (video.isActive !== undefined) payload.is_active = video.isActive;
+
+      const { error } = await supabase.from("adzan_videos").update(payload).eq("id", id);
+      if (error) {
+        showToast("Gagal memperbarui video: " + (error.message || "Error database"), "error");
+        return false;
+      }
+      showToast("Video berhasil diperbarui.");
+      loadAdzanVideos();
+      return true;
+    },
+    [showToast, loadAdzanVideos],
+  );
+
+  const toggleVideoActive = useCallback(
+    async (id: string) => {
+      const v = adzanVideos.find(item => String(item.id) === String(id));
+      if (!v) return;
+      const { error } = await supabase.from("adzan_videos").update({ is_active: !v.isActive }).eq("id", id);
+      if (!error) loadAdzanVideos();
+    },
+    [adzanVideos, loadAdzanVideos],
+  );
+
+  const deleteAdzanVideo = useCallback(
+    async (id: string) => {
+      const { error } = await supabase.from("adzan_videos").delete().eq("id", id);
+      if (error) {
+        showToast("Gagal menghapus video", "error");
+      } else {
+        showToast("Video berhasil dihapus.", "info");
+        loadAdzanVideos();
+      }
+    },
+    [showToast, loadAdzanVideos],
+  );
+
+  const setParticipantTargetIrama = useCallback(
+    async (participantId: string, irama: string) => {
+      setParticipants(prev =>
+        prev.map(p => (String(p.id) === String(participantId) ? { ...p, target_irama: irama } : p))
+      );
+      try {
+        localStorage.setItem(`bocil_target_irama_${participantId}`, irama);
+        const { error } = await supabase.from("participants").update({ target_irama: irama }).eq("id", participantId);
+        if (error) console.warn("Could not save target_irama to DB", error);
+      } catch (err) {
+        console.warn("Error setting target_irama", err);
+      }
+    },
+    [],
+  );
+
   /**
    * Foto diperkecil ke 256px WebP sebelum diunggah (±10–30 KB, sebelumnya foto
    * kamera bisa beberapa MB) dan disimpan dengan nama tetap per anak, sehingga
@@ -1182,6 +1323,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     updateQuiz,
     toggleQuizActive,
     deleteQuiz,
+    adzanVideos,
+    loadAdzanVideos,
+    addAdzanVideo,
+    updateAdzanVideo,
+    toggleVideoActive,
+    deleteAdzanVideo,
+    setParticipantTargetIrama,
     budgetStatus,
     toast,
     showToast,
@@ -1204,6 +1352,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     namedAdzan, recordAdzan, recordSholawatIqomah, recordActivities, redeemPackages,
     redeemHistory, requestRedeem, processRedeem, quizzes, quizAttempts,
     submitQuiz, awardGameWin, addQuiz, updateQuiz, toggleQuizActive, deleteQuiz,
+    adzanVideos, loadAdzanVideos, addAdzanVideo, updateAdzanVideo, toggleVideoActive, deleteAdzanVideo, setParticipantTargetIrama,
     budgetStatus, toast, showToast, isLoading, quickAbsen, setQuickAbsen,
     seedDatabase, uploadAvatar, optimizeAvatars, updateParticipantAvatar, schedule, updateSchedule,
     activeSeason, allSeasons, seasonHistory, endSeason,

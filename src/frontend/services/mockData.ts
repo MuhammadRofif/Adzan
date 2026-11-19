@@ -1,4 +1,4 @@
-import { Participant, Transaction, RedeemPackage, RedeemHistory, Quiz, QuizAttempt, AttendanceEntry, AdzanEntry } from '../../shared/types';
+import { Participant, Transaction, RedeemPackage, RedeemHistory, Quiz, QuizAttempt, AttendanceEntry, AdzanEntry, AdzanVideo } from '../../shared/types';
 
 // ─── Participants ───────────────────────────────────────────────────────────────
 export const mockParticipants: Participant[] = [
@@ -89,3 +89,79 @@ export const mockAttendanceLog: AttendanceEntry[] = [];
 
 // ─── Adzan Log ────────────────────────────────────────────────────────────────────
 export const mockAdzanLog: AdzanEntry[] = [];
+
+// ─── Adzan Videos ─────────────────────────────────────────────────────────────────
+export const mockAdzanVideos: AdzanVideo[] = [
+  {
+    id: 'v1',
+    title: 'NUSSA : ADZAN',
+    muadzin: 'Nussa Official',
+    category: 'Muadzin Cilik',
+    youtubeUrl: 'https://www.youtube.com/watch?v=X1Aec-UC2UI',
+    youtubeId: 'X1Aec-UC2UI',
+    difficulty: 'Mudah',
+    description: 'Animasi edukasi adzan ramah anak dengan irama stabil dan mudah ditirukan.',
+    orderIndex: 1,
+    isActive: true,
+  },
+  {
+    id: 'v2',
+    title: 'ADZAN MERDU || Muzammil Hasballah',
+    muadzin: 'Muzammil Hasballah',
+    category: 'Hijaz',
+    youtubeUrl: 'https://www.youtube.com/watch?v=X1wtcLunYVk',
+    youtubeId: 'X1wtcLunYVk',
+    difficulty: 'Sedang',
+    description: 'Lantunan adzan merdu dan fasih dari qari muda panutan anak-anak Indonesia.',
+    orderIndex: 2,
+    isActive: true,
+  },
+  {
+    id: 'v3',
+    title: 'SUARA ADZAN MERDU || UMAR AL FARUQ',
+    muadzin: 'Umar Al Faruq',
+    category: 'Rost & Nahawand',
+    youtubeUrl: 'https://www.youtube.com/watch?v=18r6pTlgFKs',
+    youtubeId: '18r6pTlgFKs',
+    difficulty: 'Sedang',
+    description: 'Kumandang adzan sangat merdu dengan makhraj huruf yang jelas dan tartil.',
+    orderIndex: 3,
+    isActive: true,
+  },
+  {
+    id: 'v4',
+    title: 'ADZAN MERDU || MUHAMMAD VICKRY',
+    muadzin: 'Muhammad Vickry',
+    category: 'Makkah & Madinah',
+    youtubeUrl: 'https://www.youtube.com/watch?v=cJbKGxOq9n8',
+    youtubeId: 'cJbKGxOq9n8',
+    difficulty: 'Mudah',
+    description: 'Irama adzan yang tenang, sejuk, dan tempo stabil cocok untuk latihan anak.',
+    orderIndex: 4,
+    isActive: true,
+  },
+  {
+    id: 'v5',
+    title: 'Adzan Sangat Merdu - Taqy Malik',
+    muadzin: 'Taqy Malik',
+    category: 'Hijaz',
+    youtubeUrl: 'https://www.youtube.com/watch?v=xlVUVnwSU_s',
+    youtubeId: 'xlVUVnwSU_s',
+    difficulty: 'Mahir',
+    description: 'Lantunan nada adzan khas dan menyentuh hati dengan nada tinggi yang mantap.',
+    orderIndex: 5,
+    isActive: true,
+  },
+  {
+    id: 'v6',
+    title: 'Adzan Merdu - Salim Bahanan',
+    muadzin: 'Salim Bahanan',
+    category: 'Umum',
+    youtubeUrl: 'https://www.youtube.com/watch?v=T7s3IFMktLo',
+    youtubeId: 'T7s3IFMktLo',
+    difficulty: 'Sedang',
+    description: 'Kumandang adzan yang syahdu dan khusyuk penyejuk hati.',
+    orderIndex: 6,
+    isActive: true,
+  },
+];

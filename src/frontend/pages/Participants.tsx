@@ -201,6 +201,11 @@ export const Participants: React.FC = () => {
                           </div>
                           <div>
                             <button onClick={() => setDetailModal(p)} className="font-semibold text-gray-900 hover:text-primary-600 transition-colors text-left">{p.nama}</button>
+                            {p.target_irama && (
+                              <div className="text-[11px] text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                                <span>🎯</span> {p.target_irama}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -389,6 +394,11 @@ export const Participants: React.FC = () => {
                 <div className="flex flex-wrap justify-center sm:justify-start gap-2">
                   <Badge variant={statusVariants[detailModal.status]}>{statusLabels[detailModal.status]}</Badge>
                   <span className="text-xs text-gray-400 flex items-center gap-1 font-mono">ID: {detailModal.id}</span>
+                  {detailModal.target_irama && (
+                    <span className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg font-bold flex items-center gap-1">
+                      🎯 Target: {detailModal.target_irama}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

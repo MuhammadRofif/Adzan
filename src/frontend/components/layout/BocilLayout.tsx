@@ -6,6 +6,7 @@ import { hijriDateLabel } from '../../utils/prayerTimes';
 
 const bocilNavItems = [
   { name: 'Beranda', href: '/', emoji: '🏠' },
+  { name: 'Video', href: '/video', emoji: '🎬' },
   { name: 'Quiz', href: '/quiz', emoji: '🎮' },
   { name: 'Hadiah', href: '/redeem', emoji: '🎁' },
   { name: 'Juara', href: '/seasons', emoji: '🏆' },
@@ -83,7 +84,7 @@ export const BocilLayout: React.FC = () => {
         className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t-2 border-sky-100 pb-[env(safe-area-inset-bottom)]"
         aria-label="Menu utama"
       >
-        <ul className="grid grid-cols-4">
+        <ul className="grid grid-cols-5">
           {bocilNavItems.map(item => (
             <li key={item.name}>
               <NavLink

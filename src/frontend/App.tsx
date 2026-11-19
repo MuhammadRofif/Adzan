@@ -16,6 +16,9 @@ const BocilQuiz = React.lazy(() =>
 const BocilRedeem = React.lazy(() =>
   import('./pages/bocil/BocilRedeem').then(m => ({ default: m.BocilRedeem }))
 );
+const BocilVideos = React.lazy(() =>
+  import('./pages/bocil/BocilVideos').then(m => ({ default: m.BocilVideos }))
+);
 const SeasonHistory = React.lazy(() =>
   import('./pages/SeasonHistory').then(m => ({ default: m.SeasonHistoryPage }))
 );
@@ -23,6 +26,9 @@ const SeasonHistory = React.lazy(() =>
 // Admin pages
 const Dashboard = React.lazy(() =>
   import('./pages/Dashboard').then(m => ({ default: m.Dashboard }))
+);
+const VideosPage = React.lazy(() =>
+  import('./pages/Videos').then(m => ({ default: m.VideosPage }))
 );
 const Participants = React.lazy(() =>
   import('./pages/Participants').then(m => ({ default: m.Participants }))
@@ -82,6 +88,7 @@ const App: React.FC = () => {
             {/* Bocil (Public) Routes - Kid-friendly dashboard */}
             <Route path="/" element={<BocilLayout />}>
               <Route index element={<BocilDashboard />} />
+              <Route path="video" element={<BocilVideos />} />
               <Route path="quiz" element={<BocilQuiz />} />
               <Route path="redeem" element={<BocilRedeem />} />
               <Route path="seasons" element={<SeasonHistory />} />
@@ -96,6 +103,7 @@ const App: React.FC = () => {
                 <Route index element={<Dashboard />} />
                 <Route path="participants" element={<Participants />} />
                 <Route path="schedule" element={<SchedulePage />} />
+                <Route path="videos" element={<VideosPage />} />
                 <Route path="quiz" element={<QuizPage />} />
                 <Route path="redeem" element={<Redeem />} />
                 <Route path="settings" element={<Settings />} />

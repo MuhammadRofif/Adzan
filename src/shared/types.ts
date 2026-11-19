@@ -25,6 +25,7 @@ export interface Participant {
   nama: string;
   status: ParticipantStatus;
   avatar_url?: string;
+  target_irama?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -92,6 +93,22 @@ export interface QuizAttempt {
   earnedPoints: number;
   answers: number[];
   completedAt: Date;
+}
+
+export interface AdzanVideo {
+  id: string;
+  title: string;
+  muadzin: string;
+  category: string; // e.g. 'Makkah & Madinah', 'Hijaz', 'Muadzin Cilik', 'Khusus Subuh', 'Umum'
+  youtubeUrl: string;
+  youtubeId: string;
+  difficulty: 'Mudah' | 'Sedang' | 'Mahir';
+  description?: string;
+  tips?: string;
+  orderIndex: number;
+  isActive: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface AttendanceEntry {

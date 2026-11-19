@@ -1,6 +1,6 @@
 import React, { ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Users, BookOpen, Gift, Settings, Calendar, Award } from 'lucide-react';
+import { Home, Users, BookOpen, Gift, Settings, Calendar, Award, Video } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useAdminSession } from '../../services/auth';
 
@@ -19,6 +19,7 @@ const navItems: NavItem[] = [
   { name: 'Dashboard', href: '/admin', icon: <Home className="w-5 h-5" /> },
   { name: 'Manajemen Peserta', href: '/admin/participants', icon: <Users className="w-5 h-5" /> },
   { name: 'Jadwal Adzan', href: '/admin/schedule', icon: <Calendar className="w-5 h-5" /> },
+  { name: 'Video Adzan', href: '/admin/videos', icon: <Video className="w-5 h-5" /> },
   { name: 'Quiz Keislaman', href: '/admin/quiz', icon: <BookOpen className="w-5 h-5" /> },
   { name: 'Redeem Hadiah', href: '/admin/redeem', icon: <Gift className="w-5 h-5" /> },
   { name: 'Pengaturan', href: '/admin/settings', icon: <Settings className="w-5 h-5" /> },
